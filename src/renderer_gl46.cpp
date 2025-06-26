@@ -117,26 +117,27 @@ GraphicsHandle createShaderProgram(const std::string& vsCode, const std::string&
     return handle;
 }
 
-GLenum getGlTypeForPrimitiveType(PrimitiveType type) {
+GLenum getGlTypeForDataType(DataType type) {
     switch (type) {
-        case PrimitiveType::Float:
+        case DataType::Float:
             return GL_FLOAT;
-        case PrimitiveType::Int32:
+        case DataType::Int32:
             return GL_INT;
-        case PrimitiveType::Uint32:
+        case DataType::Uint32:
             return GL_UNSIGNED_INT;
-        case PrimitiveType::Int16:
+        case DataType::Int16:
             return GL_SHORT;
-        case PrimitiveType::Uint16:
+        case DataType::Uint16:
             return GL_UNSIGNED_SHORT;
         default: return GL_FLOAT;
     }
 }
 
-void associateVertexAttribute(int attributeLocation, int numberOfComponents, PrimitiveType type, int stride, int offset,
+
+void associateVertexAttribute(uint32_t attributeLocation, int numberOfComponents, DataType type, int stride, int offset,
     GraphicsHandle bufferHandle, GraphicsHandle shaderProgramHandle, GraphicsHandle vaoHandle) {
     glBindBuffer(GL_ARRAY_BUFFER, vertexBufferMap[bufferHandle.id]);
-    glVertexAttribPointer(attributeLocation, numberOfComponents, getGlTypeForPrimitiveType(type),
+    glVertexAttribPointer(attributeLocation, numberOfComponents, getGlTypeForDataType(type),
         GL_FALSE, stride, (void*)offset);
     glEnableVertexAttribArray(attributeLocation);
 }
@@ -190,9 +191,19 @@ GLenum getGLPrimitiveType(PrimitiveType type) {
     }
 }
 
+
+void associateVertexBufferWithVertexArray(GraphicsHandle vertexBuffer, GraphicsHandle vertexArray) {
+    // auto va = vertexArrayMap[vertexArray.id];
+    // va->vertexBuffers.push_back(vertexBufferMap[vertexBuffer.id]);
+
+    // Try with noop for now
+}
+
+
+
 void renderGeometry(PrimitiveType type) {
 
-    glDrawArrays(getPrimitiveType(type), 0, 3);
+    glDrawArrays(getGLPrimitiveType(type), 0, 3);
     assertNoGlError();
 }
 
