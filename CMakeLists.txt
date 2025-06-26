@@ -18,5 +18,5 @@ file(GLOB EXT_SRC
 
 add_executable(app WIN32 ${ENGINE_SRC} ${EXT_SRC})
 target_include_directories(app PUBLIC include)
-target_compile_definitions(app PRIVATE UNICODE GLEW_STATIC)
-target_link_libraries(app PUBLIC opengl32)
+target_compile_definitions(app PRIVATE UNICODE GLEW_STATIC RENDERER_DX11)
+target_link_libraries(app PUBLIC opengl32 d3d11 dxguid d3dcompiler)

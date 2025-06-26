@@ -1,8 +1,10 @@
 #include <iostream>
 #include <Win32Window.h>
 #include <graphics.h>
-#define GL_GRAPHICS_IMPLEMENTATION
-#include <gl_graphics.h>
+#define GRAPHICS_IMPLEMENTATION
+#include <graphics.h>
+#include "game.h"
+#include <vector>
 
 
 static float frame_time = 0.0f;
@@ -18,6 +20,7 @@ void clear_screen(int width, int height, Win32Window& window, uint32_t *pixels32
 
 }
 
+#ifdef RENDERER_SW
 void do_sw_frame(Win32Window& window) {
     clear_screen(window.getWidth(), window.getHeight(), window, (uint32_t*)window.getBackbufferPixels());
 
@@ -34,22 +37,119 @@ void do_sw_frame(Win32Window& window) {
     window.present();
 }
 
-void do_gl_frame(const Win32Window & window) {
-    gl_clear(0, 0.5, 0, 1);
-    gl_present();
+#endif
+
+void do_frame(const Win32Window & window, GameState& gameState) {
+    clear(0, 0.2, 0, 1);
+
+    bindVertexArray(gameState.graphics.vertexArray);
+    bindShaderProgram(gameState.graphics.shaderProgram);
+    renderGeometry();
+
+    present();
 }
+
+
+ static std::string vshader_hlsl = R"(
+
+// struct VOut
+// {
+// 	float4 pos : SV_POSITION;
+// 	float2 tex : TEXCOORD0;
+// };
+//
+//
+//         VOut VShader(float4 position : POSITION, float2 tex : TEXCOORD0) {
+//
+// 	VOut output;
+// 	output.pos = mul(position, worldm);
+// 	output.pos = mul(output.pos, viewm);
+// 	output.pos = mul(output.pos, projm);
+//
+// 	output.tex = tex;
+// 	output.tex.y = 1-output.tex.y;
+// 	output.tex.x *= textureScale.x;
+// 	output.tex.y *= textureScale.y;
+//
+// 	return output;
+// }
+//
+//
+//
+     float4 main(float4 pos : POSITION) : SV_POSITION {
+         return pos;
+     }
+)";
+
+
+static std::string vshader_code = R"(
+
+    #version 460
+
+    layout(location = 0) in vec3 pos;
+    layout(location = 1) in vec2 uv;
+    layout(location = 2) in vec3 normal;
+
+    void main() {
+        gl_Position = vec4(pos, 1);
+    };
+
+)";
+
+static std::string fshader_hlsl = R"(
+
+
+
+    float4 main() : SV_TARGET
+    {
+        return float4(1.0, 1.0, 0.0, 1.0); // yellow for dx11
+    }
+)";
+
+static std::string fshader_code = R"(
+    #version 460
+
+    out vec4 color;
+
+    void main() {
+        color = vec4(1, 0, 0, 1);
+    }
+
+)";
+
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
     int width = 800;
     int height = 600;
-    auto window = Win32Window(GetModuleHandle(nullptr), SW_SHOWDEFAULT, L"my window", width, height);
-    gl_init(window.get_hwnd(), false, 0);
+    auto window = Win32Window(hInstance, SW_SHOWDEFAULT, L"my window", width, height);
+    initGraphics(window, false, 0);
+
+
+    // Shader initialization
+    // auto vs = createShader(vshader_code, ShaderType::Vertex);
+    // auto fs = createShader(fshader_code, ShaderType::Fragment);
+
+    GameState gameState;
+    gameState.graphics.shaderProgram = createShaderProgram(vshader_hlsl, fshader_hlsl);
+
+    std::vector<float> tri_vertices = {
+        -0.5f, -0.5f, 0.0f,
+         0.5f, -0.5f, 0.0f,
+         0.0f,  0.5f, 0.0f,
+    };
+
+    gameState.graphics.vertexArray = createVertexArray();
+    gameState.graphics.vertexBuffer = createVertexBuffer(tri_vertices.data(), tri_vertices.size() * sizeof(float));
+    associateVertexBufferWithVertexArray(gameState.graphics.vertexBuffer, gameState.graphics.vertexArray);
+    associateVertexAttribute(0, 3, PrimitiveType::Float, 0,
+        0, gameState.graphics.vertexBuffer, gameState.graphics.shaderProgram, gameState.graphics.vertexArray);
+
     bool running = true;
     while (running) {
         auto start_tok = window.performance_count();
         running = window.process_messages();
 
-        do_gl_frame(window);
+        do_frame(window, gameState);
 
 
         auto end_tok = window.performance_count();
