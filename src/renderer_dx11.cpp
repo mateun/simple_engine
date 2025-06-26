@@ -26,10 +26,17 @@ static ID3D11Texture2D* depthStencilBuffer;
 static ID3D11DepthStencilView *depthStencilView;
 static ID3D11DepthStencilState *m_DepthStencilState;
 
+struct BufferWrapper {
+    ID3D11Buffer* buffer;
+    uint32_t stride = 0;
+    uint32_t offset = 0;
+};
 
 struct DX11VertexArray {
-    std::vector<ID3D11Buffer*> vertexBuffers;
+    std::vector<BufferWrapper> vertexBuffers;
+    ID3D11Buffer* indexBuffer = nullptr;
     ID3D11InputLayout* inputLayout = nullptr;
+
 };
 
 struct DX11Shader {
@@ -50,10 +57,11 @@ static int nextHandleId = 0;
 static std::map<int, DX11Shader> pixelShaderMap;
 static std::map<int, DX11Shader> vertexShaderMap;
 static std::map<int, DX11ShaderProgram> shaderProgramMap;
-static std::map<int, ID3D11Buffer*> vertexBufferMap;
+static std::map<int, BufferWrapper> vertexBufferMap;
 static std::map<int, ID3D11Buffer*> indexBufferMap;
 static std::map<int, ID3D11InputLayout*> inputLayoutMap;
 static std::map<int, DX11VertexArray*> vertexArrayMap;
+static std::map<int, ID3D11Texture2D*> textureMap;
 
 
 
@@ -229,6 +237,39 @@ void present() {
     }
 
 }
+
+GraphicsHandle createTexture(int width, int height, uint8_t *pixels) {
+    assert(pixels != nullptr);
+    ID3D11Texture2D *texture;
+    D3D11_TEXTURE2D_DESC desc;
+    ZeroMemory(&desc, sizeof(D3D11_TEXTURE2D_DESC));
+    desc.Width = width;
+    desc.Height = height;
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.CPUAccessFlags = 0;
+    desc.MiscFlags = 0;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.SampleDesc.Count = 1;
+    desc.SampleDesc.Quality = 0;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA initialData = {};
+    initialData.pSysMem = pixels;
+    initialData.SysMemPitch = width * 4;        // This is only true for 4 byte colors
+    initialData.SysMemSlicePitch = 0;
+
+    HRESULT res = device->CreateTexture2D(&desc, &initialData, &texture);
+    if (FAILED(res)) {
+        std::cerr << "texture creation failed" << std::endl;
+        exit(1);
+    }
+
+    GraphicsHandle handle = {nextHandleId++};
+    textureMap[handle.id] = texture;
+    return handle;
+}
+
 GraphicsHandle createShader(const std::string& code, ShaderType type) {
     ID3DBlob* shaderByteCode;
 
@@ -293,7 +334,7 @@ GraphicsHandle createShaderProgram(const std::string& vsCode, const std::string&
     return handle;
 
 }
-GraphicsHandle createVertexBuffer(void* data, int size) {
+GraphicsHandle createVertexBuffer(void* data, int size, uint32_t stride) {
     D3D11_BUFFER_DESC bd = {};
     bd.Usage = D3D11_USAGE_DEFAULT;
     bd.ByteWidth = size;
@@ -307,7 +348,7 @@ GraphicsHandle createVertexBuffer(void* data, int size) {
     device->CreateBuffer(&bd, &initData, &vertexBuffer);
 
     GraphicsHandle handle = {nextHandleId++};
-    vertexBufferMap[handle.id] = vertexBuffer;
+    vertexBufferMap[handle.id] = {vertexBuffer, stride};
     return  handle;
 
 
@@ -321,6 +362,11 @@ D3D11_PRIMITIVE_TOPOLOGY getPrimitiveTopology(PrimitiveType primitiveType) {
         case PrimitiveType::TRIANGLE_LIST: return D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
         default: return D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
     }
+}
+
+void renderGeometryIndexed(PrimitiveType primitiveType, int count, int startIndex) {
+    ctx->IASetPrimitiveTopology(getPrimitiveTopology(primitiveType));
+    ctx->DrawIndexed(count, startIndex, 0);
 }
 
 void renderGeometry(PrimitiveType primitiveType) {
@@ -346,7 +392,20 @@ void bindShaderProgram(GraphicsHandle programHandle) {
 
 
 GraphicsHandle createIndexBuffer(void* data, int size) {
-    return {};
+    D3D11_BUFFER_DESC bd = {};
+    bd.Usage = D3D11_USAGE_DEFAULT;
+    bd.ByteWidth = size;
+    bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    bd.CPUAccessFlags = 0;
+
+    D3D11_SUBRESOURCE_DATA initData = {};
+    initData.pSysMem = data;
+
+    ID3D11Buffer* buf = nullptr;
+    device->CreateBuffer(&bd, &initData, &buf);
+    GraphicsHandle handle = {nextHandleId++};
+    indexBufferMap[handle.id] = buf;
+    return handle;
 
 }
 GraphicsHandle createVertexArray() {
@@ -361,6 +420,11 @@ GraphicsHandle createVertexArray() {
 void associateVertexBufferWithVertexArray(GraphicsHandle vertexBuffer, GraphicsHandle vertexArray) {
     auto va = vertexArrayMap[vertexArray.id];
     va->vertexBuffers.push_back(vertexBufferMap[vertexBuffer.id]);
+}
+
+void associateIndexBufferWithVertexArray(GraphicsHandle indexBuffer, GraphicsHandle vertexArray) {
+    auto va = vertexArrayMap[vertexArray.id];
+    va->indexBuffer = indexBufferMap[indexBuffer.id];
 }
 
 DXGI_FORMAT getDXFormatForType(DataType type, int numberOfComponents = 3) {
@@ -402,12 +466,22 @@ void bindVertexBuffer(GraphicsHandle bufferHandle) {
 void bindVertexArray(GraphicsHandle vaoHandle) {
     auto va = vertexArrayMap[vaoHandle.id];
 
-    uint32_t strides[] = {12};// TODO make dynamic
-    uint32_t offsets[] = {0};
+    std::vector<uint32_t> strides;
+    std::vector<uint32_t> offsets;
+    std::vector<ID3D11Buffer*> vbs;
+
+    for (auto vb : va->vertexBuffers) {
+        strides.push_back(vb.stride);
+        offsets.push_back(vb.offset);
+        vbs.push_back(vb.buffer);
+    }
 
     ctx->IASetInputLayout(va->inputLayout);
     // The stride is not just 0, but it must be set for the actual size of the vertex.
-    ctx->IASetVertexBuffers(0, va->vertexBuffers.size(), va->vertexBuffers.data(), strides, offsets);
+    ctx->IASetVertexBuffers(0, va->vertexBuffers.size(), vbs.data(), strides.data(), offsets.data());
+    if (va->indexBuffer) {
+        ctx->IASetIndexBuffer(va->indexBuffer, DXGI_FORMAT_R32_UINT, 0);
+    }
 }
 
 
