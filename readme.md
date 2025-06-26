@@ -1,6 +1,6 @@
 # Simple Engine
 
-This is a simple game engine for OpenGL 4.6. 
+This is a simple Windows/Linux game engine for OpenGL 4.6/DX11.
 
 ### Main features:
 1. PBR Rendering - TODO

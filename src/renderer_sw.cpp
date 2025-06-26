@@ -1,11 +1,9 @@
 //
-// Created by mgrus on 25.06.2025.
+// Created by mgrus on 26.06.2025.
 //
 
 
-#include "Win32Window.h"
-#include <graphics.h>
-
+#ifdef RENDERER_SW
 
 static uint32_t* get_pixels_32_for_window(Win32Window& window) {
     void* pixels = window.getBackbufferPixels();
@@ -61,3 +59,6 @@ void drawLine(Win32Window &window, int x1, int y1, int x2, int y2, int color) {
     }
 
 }
+#endif
+
+
