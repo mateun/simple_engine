@@ -10,6 +10,7 @@ struct GameState {
     struct GraphicsState {
         GraphicsHandle shaderProgram;
         GraphicsHandle vertexBuffer;
+        GraphicsHandle indexBuffer;
         GraphicsHandle vertexArray;
     } graphics;
 

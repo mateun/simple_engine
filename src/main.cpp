@@ -5,7 +5,8 @@
 #include <graphics.h>
 #include "game.h"
 #include <vector>
-
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
 
 static float frame_time = 0.0f;
 
@@ -44,7 +45,7 @@ void do_frame(const Win32Window & window, GameState& gameState) {
 
     bindVertexArray(gameState.graphics.vertexArray);
     bindShaderProgram(gameState.graphics.shaderProgram);
-    renderGeometry(PrimitiveType::TRIANGLE_LIST);
+    renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
 
     present();
 }
@@ -118,6 +119,19 @@ static std::string fshader_glsl = R"(
 )";
 
 
+uint8_t* load_image(const std::string& fileName, int* width, int* height) {
+    int imageChannels;
+
+    auto pixels = stbi_load(
+            fileName.c_str(), width, height,
+            &imageChannels,
+            4);
+
+    return pixels;
+
+}
+
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
     int width = 800;
     int height = 600;
@@ -134,15 +148,30 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
     std::vector<float> tri_vertices = {
         -0.5f, -0.5f, 0.0f,
          0.5f, -0.5f, 0.0f,
-         0.0f,  0.5f, 0.0f,
+         -0.5f,  0.5f, 0.0f,
+        0.5, 0.5, 0.0f,
+
+    };
+
+    std::vector<uint32_t> tri_indices = {
+        0,1, 2,
+        2, 1, 3
     };
 
     gameState.graphics.vertexArray = createVertexArray();
     bindVertexArray(gameState.graphics.vertexArray);
-    gameState.graphics.vertexBuffer = createVertexBuffer(tri_vertices.data(), tri_vertices.size() * sizeof(float));
+    gameState.graphics.vertexBuffer = createVertexBuffer(tri_vertices.data(), tri_vertices.size() * sizeof(float), sizeof(float) * 3);
     associateVertexBufferWithVertexArray(gameState.graphics.vertexBuffer, gameState.graphics.vertexArray);
+    gameState.graphics.indexBuffer = createIndexBuffer(tri_indices.data(), tri_indices.size() * sizeof(uint32_t));
+    associateIndexBufferWithVertexArray(gameState.graphics.indexBuffer, gameState.graphics.vertexArray);
+
     associateVertexAttribute(0, 3, DataType::Float, 0,
         0, gameState.graphics.vertexBuffer, gameState.graphics.shaderProgram, gameState.graphics.vertexArray);
+
+    int image_width, image_height;
+
+    auto pixels = load_image("../assets/test.png", &image_width, &image_height);
+    auto textureHandle = createTexture(image_width, image_height, pixels);
 
     bool running = true;
     while (running) {
