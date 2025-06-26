@@ -32,11 +32,24 @@ struct DX11VertexArray {
     ID3D11InputLayout* inputLayout = nullptr;
 };
 
+struct DX11Shader {
+    ID3DBlob* blob;
+    ID3D11VertexShader* vertexShader;
+    ID3D11PixelShader* pixelShader;
+};
+
+struct DX11ShaderProgram {
+    DX11Shader vertexShader;
+    DX11Shader pixelShader;
+};
+
+
+
 
 static int nextHandleId = 0;
-static std::map<int, ID3DBlob*> pixelShaderMap;
-static std::map<int, ID3DBlob*> vertexShaderMap;
-static std::map<int, ID3DBlob*> shaderProgramMap;
+static std::map<int, DX11Shader> pixelShaderMap;
+static std::map<int, DX11Shader> vertexShaderMap;
+static std::map<int, DX11ShaderProgram> shaderProgramMap;
 static std::map<int, ID3D11Buffer*> vertexBufferMap;
 static std::map<int, ID3D11Buffer*> indexBufferMap;
 static std::map<int, ID3D11InputLayout*> inputLayoutMap;
@@ -194,17 +207,35 @@ void initGraphics(Win32Window& window, bool msaa, int msaa_samples) {
     ID3D11RasterizerState* rasterState = nullptr;
     device->CreateRasterizerState(&rsDesc, &rasterState);
     ctx->RSSetState(rasterState);
+
+    D3D11_VIEWPORT vp = {};
+    vp.TopLeftX = 0;
+    vp.TopLeftY = 0;
+    vp.Width = (FLOAT)w;
+    vp.Height = (FLOAT)h;
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    ctx->RSSetViewports(1, &vp);
 }
+#include <comdef.h>
 void present() {
+    auto hr = swapChain->Present(0, 0);
+    if (FAILED(hr)) {
+        _com_error err(hr);
+        std::wcerr << L"Present failed: " << _com_error(hr).ErrorMessage() << std::endl;
+        auto reason = device->GetDeviceRemovedReason();
+        std::cerr << "Device removed reason: " << reason << std::endl;
+        exit(1);
+    }
 
 }
 GraphicsHandle createShader(const std::string& code, ShaderType type) {
     ID3DBlob* shaderByteCode;
 
     UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
-#if _DEBUG
+    #if _DEBUG
     flags |= D3DCOMPILE_DEBUG;
-#endif
+    #endif
 
 
     auto versionTarget = type == ShaderType::Vertex ? "vs_5_0" : "ps_5_0";
@@ -232,6 +263,7 @@ GraphicsHandle createShader(const std::string& code, ShaderType type) {
         auto hr = device->CreateVertexShader(shaderByteCode->GetBufferPointer(),
             shaderByteCode->GetBufferSize(), nullptr, &ps);
         assert(SUCCEEDED(hr));
+        vertexShaderMap[handle.id] =  { shaderByteCode, ps, nullptr};
     }
 
     else if (type == ShaderType::Fragment) {
@@ -239,9 +271,10 @@ GraphicsHandle createShader(const std::string& code, ShaderType type) {
         auto hr = device->CreatePixelShader(shaderByteCode->GetBufferPointer(),
             shaderByteCode->GetBufferSize(), nullptr, &ps);
         assert(SUCCEEDED(hr));
+        pixelShaderMap[handle.id] =  {shaderByteCode, nullptr, ps};
+
 
     }
-    vertexShaderMap[handle.id] =  shaderByteCode;
     return handle;
 
 }
@@ -250,31 +283,65 @@ GraphicsHandle createShaderProgram(const std::string& vsCode, const std::string&
     auto fsHandle = createShader(fsCode, ShaderType::Fragment);
 
     auto vs = vertexShaderMap[vsHandle.id];
-    auto fs = vertexShaderMap[fsHandle.id];
+    auto fs = pixelShaderMap[fsHandle.id];
 
     GraphicsHandle handle = {nextHandleId++};
-    shaderProgramMap[handle.id] = vs;
+    DX11ShaderProgram shaderProgram;
+    shaderProgram.vertexShader = vs;
+    shaderProgram.pixelShader = fs;
+    shaderProgramMap[handle.id] = shaderProgram;
     return handle;
 
 }
 GraphicsHandle createVertexBuffer(void* data, int size) {
-    assert(false);
-    return  {};
+    D3D11_BUFFER_DESC bd = {};
+    bd.Usage = D3D11_USAGE_DEFAULT;
+    bd.ByteWidth = size;
+    bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    bd.CPUAccessFlags = 0;
+
+    D3D11_SUBRESOURCE_DATA initData = {};
+    initData.pSysMem = data;
+
+    ID3D11Buffer* vertexBuffer = nullptr;
+    device->CreateBuffer(&bd, &initData, &vertexBuffer);
+
+    GraphicsHandle handle = {nextHandleId++};
+    vertexBufferMap[handle.id] = vertexBuffer;
+    return  handle;
 
 
 }
 void bindVertexBuffer(int bufferHandle) {
 
 }
-void renderGeometry() {
 
+D3D11_PRIMITIVE_TOPOLOGY getPrimitiveTopology(PrimitiveType primitiveType) {
+    switch (primitiveType) {
+        case PrimitiveType::TRIANGLE_LIST: return D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+        default: return D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+    }
+}
+
+void renderGeometry(PrimitiveType primitiveType) {
+    ctx->IASetPrimitiveTopology(getPrimitiveTopology(primitiveType));
+    ctx->Draw(3, 0);
 }
 void clear(float r, float g, float b, float a) {
+    ID3D11RenderTargetView* rtvs[1] = { rtv };
+    ctx->OMSetRenderTargets(1, rtvs, depthStencilView);
+    //ctx->OMSetRenderTargets(1, rtvs, nullptr);
+    float color[] = {r, g, b, a};
+    ctx->ClearRenderTargetView(rtv, color);
 
+    // clear our depth target as well
+    ctx->ClearDepthStencilView(depthStencilView, D3D11_CLEAR_DEPTH, 1, 0);
 }
 
 void bindShaderProgram(GraphicsHandle programHandle) {
-
+    auto shaderProgram = shaderProgramMap[programHandle.id];
+    ctx->VSSetShader(shaderProgram.vertexShader.vertexShader, nullptr, 0);
+    ctx->PSSetShader(shaderProgram.pixelShader.pixelShader, nullptr, 0);
 }
 
 
@@ -296,9 +363,9 @@ void associateVertexBufferWithVertexArray(GraphicsHandle vertexBuffer, GraphicsH
     va->vertexBuffers.push_back(vertexBufferMap[vertexBuffer.id]);
 }
 
-DXGI_FORMAT getDXFormatForType(PrimitiveType type, int numberOfComponents = 3) {
+DXGI_FORMAT getDXFormatForType(DataType type, int numberOfComponents = 3) {
     switch (type) {
-        case PrimitiveType::Float:
+        case DataType::Float:
             if (numberOfComponents == 3)
                 return DXGI_FORMAT_R32G32B32_FLOAT;
             if (numberOfComponents == 4)
@@ -312,17 +379,19 @@ DXGI_FORMAT getDXFormatForType(PrimitiveType type, int numberOfComponents = 3) {
     }
 }
 
-void associateVertexAttribute(uint32_t attributeLocation, int numberOfComponents, PrimitiveType type,
+void associateVertexAttribute(uint32_t attributeLocation, int numberOfComponents, DataType type,
     int stride, int offset, GraphicsHandle bufferHandle, GraphicsHandle shaderProgramHandle, GraphicsHandle vertexArrayHandle) {
 
-    auto vs = vertexShaderMap[shaderProgramHandle.id];
+    auto vs = shaderProgramMap[shaderProgramHandle.id];
 
     ID3D11InputLayout* outLayout;
     D3D11_INPUT_ELEMENT_DESC layoutDesc[] = {
          { "POSITION", attributeLocation, getDXFormatForType(type), 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
      };
 
-    device->CreateInputLayout(layoutDesc, 1, vs->GetBufferPointer(), vs->GetBufferSize(), &outLayout);
+    auto result = device->CreateInputLayout(layoutDesc, 1, vs.vertexShader.blob->GetBufferPointer(), vs.vertexShader.blob->GetBufferSize(), &outLayout);
+    assert(SUCCEEDED(result));
+
     auto va = vertexArrayMap[vertexArrayHandle.id];
     va->inputLayout = outLayout;
 
@@ -332,11 +401,13 @@ void bindVertexBuffer(GraphicsHandle bufferHandle) {
 }
 void bindVertexArray(GraphicsHandle vaoHandle) {
     auto va = vertexArrayMap[vaoHandle.id];
-    for (auto vb : va->vertexBuffers) {
 
-    }
+    uint32_t strides[] = {12};// TODO make dynamic
+    uint32_t offsets[] = {0};
+
+    ctx->IASetInputLayout(va->inputLayout);
     // The stride is not just 0, but it must be set for the actual size of the vertex.
-    ctx->IASetVertexBuffers(0, va->vertexBuffers.size(), va->vertexBuffers.data(), 0, 0);
+    ctx->IASetVertexBuffers(0, va->vertexBuffers.size(), va->vertexBuffers.data(), strides, offsets);
 }
 
 

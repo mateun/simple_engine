@@ -19,7 +19,13 @@ enum class ShaderType {
 };
 
 enum class PrimitiveType {
-  Float,
+    TRIANGLE_LIST,
+    LINE_LIST,
+    POINT_LIST
+};
+
+enum class DataType {
+    Float,
     Int32,
     Int16,
     Int8,
@@ -40,12 +46,12 @@ void bindShaderProgram(GraphicsHandle programHandle);
 GraphicsHandle createVertexBuffer(void* data, int size);
 GraphicsHandle createIndexBuffer(void* data, int size);
 GraphicsHandle createVertexArray();
-void associateVertexAttribute(uint32_t attributeLocation, int numberOfComponents, PrimitiveType type, int stride, int offset,
+void associateVertexAttribute(uint32_t attributeLocation, int numberOfComponents, DataType type, int stride, int offset,
     GraphicsHandle bufferHandle, GraphicsHandle shaderProgramHandle, GraphicsHandle vertexArrayHandle);
 void associateVertexBufferWithVertexArray(GraphicsHandle vertexBuffer, GraphicsHandle vertexArray);
 void bindVertexBuffer(GraphicsHandle bufferHandle);
 void bindVertexArray(GraphicsHandle vaoHandle);
-void renderGeometry();
+void renderGeometry(PrimitiveType primitiveType);
 void clear(float r, float g, float b, float a);
 
 
