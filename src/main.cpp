@@ -44,7 +44,7 @@ void do_frame(const Win32Window & window, GameState& gameState) {
 
     bindVertexArray(gameState.graphics.vertexArray);
     bindShaderProgram(gameState.graphics.shaderProgram);
-    renderGeometry();
+    renderGeometry(PrimitiveType::TRIANGLE_LIST);
 
     present();
 }
@@ -124,7 +124,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
     auto window = Win32Window(hInstance, SW_SHOWDEFAULT, L"my window", width, height);
     initGraphics(window, false, 0);
 
-
     // Shader initialization
     // auto vs = createShader(vshader_code, ShaderType::Vertex);
     // auto fs = createShader(fshader_code, ShaderType::Fragment);
@@ -141,7 +140,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
     gameState.graphics.vertexArray = createVertexArray();
     gameState.graphics.vertexBuffer = createVertexBuffer(tri_vertices.data(), tri_vertices.size() * sizeof(float));
     associateVertexBufferWithVertexArray(gameState.graphics.vertexBuffer, gameState.graphics.vertexArray);
-    associateVertexAttribute(0, 3, PrimitiveType::Float, 0,
+    associateVertexAttribute(0, 3, DataType::Float, 0,
         0, gameState.graphics.vertexBuffer, gameState.graphics.shaderProgram, gameState.graphics.vertexArray);
 
     bool running = true;

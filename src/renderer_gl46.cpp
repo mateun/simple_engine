@@ -182,8 +182,17 @@ void bindVertexBuffer(GraphicsHandle bufferHandle) {
     assertNoGlError();
 }
 
-void renderGeometry() {
-    glDrawArrays(GL_TRIANGLES, 0, 3);
+
+GLenum getGLPrimitiveType(PrimitiveType type) {
+    switch (type) {
+        case PrimitiveType::TRIANGLE_LIST: return GL_TRIANGLES;
+        default: return GL_TRIANGLES;
+    }
+}
+
+void renderGeometry(PrimitiveType type) {
+
+    glDrawArrays(getPrimitiveType(type), 0, 3);
     assertNoGlError();
 }
 
