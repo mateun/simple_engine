@@ -82,7 +82,7 @@ void do_frame(const Win32Window & window, GameState& gameState) {
 )";
 
 
-static std::string vshader_code = R"(
+static std::string vshader_glsl = R"(
 
     #version 460
 
@@ -106,7 +106,7 @@ static std::string fshader_hlsl = R"(
     }
 )";
 
-static std::string fshader_code = R"(
+static std::string fshader_glsl = R"(
     #version 460
 
     out vec4 color;
@@ -138,6 +138,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
     };
 
     gameState.graphics.vertexArray = createVertexArray();
+    bindVertexArray(gameState.graphics.vertexArray);
     gameState.graphics.vertexBuffer = createVertexBuffer(tri_vertices.data(), tri_vertices.size() * sizeof(float));
     associateVertexBufferWithVertexArray(gameState.graphics.vertexBuffer, gameState.graphics.vertexArray);
     associateVertexAttribute(0, 3, DataType::Float, 0,
