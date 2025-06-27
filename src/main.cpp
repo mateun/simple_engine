@@ -55,7 +55,10 @@ void do_frame(const Win32Window & window, GameState& gameState) {
         bindVertexArray(gameState.graphics.vertexArray);
         bindShaderProgram(gameState.graphics.shaderProgram);
         bindTexture(gameState.graphics.textureHandle, 0);
-        auto worldMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(64, 64, 1));
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(400, 0, 2)) * rotationMatrix * scaleMatrix;
+        // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
         uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
     }
@@ -95,13 +98,13 @@ void do_frame(const Win32Window & window, GameState& gameState) {
 
     // Per object transformation (movement, rotation, scale)
     cbuffer ObjectTransformBuffer : register(b0) {
-        matrix world_matrix;
+        row_major float4x4 world_matrix;
     };
 
     // PerFrame
     cbuffer CameraBuffer : register(b1) {
-        matrix view_matrix;
-        matrix projection_matrix;
+        row_major float4x4 view_matrix;
+        row_major float4x4 projection_matrix;
 
     };
 
@@ -110,8 +113,8 @@ void do_frame(const Win32Window & window, GameState& gameState) {
         VOutput output;
 
         output.pos = mul(pos, world_matrix);
-        output.pos = mul(pos, view_matrix);
-        output.pos = mul(pos, projection_matrix);
+        output.pos = mul(output.pos, view_matrix);
+        output.pos = mul(output.pos, projection_matrix);
         output.uv = uv;
 
         return output;
@@ -207,6 +210,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
          0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
          -0.5f,  0.5f, 0.0f, 0.0f, 1.0f,
         0.5, 0.5, 0.0f, 1.0f, 1.0f
+//
+// -32, -32, .0, 0, 0,
+//  32, -32, .0, 1, 0,
+//  -32,  32, .0, 0, 1,
+// 32,  32, .0, 1, 1,
 
     };
 
@@ -222,8 +230,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
     gameState.graphics.objectTransformBuffer = createConstantBuffer(sizeof(glm::mat4));
     gameState.graphics.cameraTransformBuffer = createConstantBuffer(sizeof(glm::mat4) * 2);
     gameState.cameraData = new CameraBuffer();
-    gameState.cameraData->view_matrix = glm::lookAtLH(glm::vec3(0, 0, -3), glm::vec3(0, 0, 3), glm::vec3(0, 1, 0));
-    gameState.cameraData->projection_matrix = glm::orthoLH<float>(0, width, 0, height, 0.1, 100);
+    //gameState.cameraData->view_matrix = glm::lookAtLH(glm::vec3(0, 0, 0), glm::vec3(0, 0, 3), glm::vec3(0, 1, 0));
+    gameState.cameraData->view_matrix = glm::mat4(1);
+    gameState.cameraData->projection_matrix = (glm::orthoLH_ZO<float>(0, 800, -300, 300, 0.0, 5));
     gameState.gameObjects.push_back(new GameObject());
 
     gameState.graphics.quadVertexBuffer = createVertexBuffer(tri_vertices.data(), tri_vertices.size() * sizeof(float), sizeof(float) * 5);
