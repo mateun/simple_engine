@@ -7,6 +7,7 @@
 
 #include <vector>
 #include <Win32Window.h>
+#include <glm/glm.hpp>
 
 struct GraphicsHandle {
     int id;
@@ -49,6 +50,23 @@ struct VertexAttributeDescription {
 
 };
 
+struct MeshImportData {
+    std::string meshName;
+    std::vector<glm::vec3> posMasterList;
+    std::vector<glm::vec3> posIndexSortedMasterList;
+    std::vector<glm::vec2> uvMasterList;
+    std::vector<glm::vec3> tangentMasterList;
+    std::vector<glm::vec3> normalMasterList;
+
+    std::vector<float> posFlat;
+    std::vector<float> normFlat;
+    std::vector<float> uvsFlat;
+    std::vector<float> tangentsFlat;
+    std::vector<uint32_t> indicesFlat;
+
+    uint32_t stride;    // The size in bytes of 1 vertex
+};
+
 GraphicsHandle createTexture(int width, int height, uint8_t* pixels);
 GraphicsHandle createShader(const std::string& code, ShaderType type);
 GraphicsHandle createShaderProgram(const std::string& vsCode, const std::string& fsCode);
@@ -70,7 +88,7 @@ void renderGeometry(PrimitiveType primitiveType);
 void renderGeometryIndexed(PrimitiveType primitiveType, int count, int startIndex);
 void present();
 
-void importMeshFromFile(const std::string& fileName);
+std::vector<MeshImportData*> importMeshFromFile(const std::string& fileName);
 
 
 // TODO is this really part of the common graphics interface?!

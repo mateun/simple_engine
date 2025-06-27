@@ -51,7 +51,8 @@ void do_frame(const Win32Window & window, GameState& gameState) {
 
     uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.cameraData, sizeof(CameraBuffer), 1);
 
-    for (auto go : gameState.gameObjects) {
+    // Render test for our 2d quad
+    {
         bindVertexArray(gameState.graphics.vertexArray);
         bindShaderProgram(gameState.graphics.shaderProgram);
         bindTexture(gameState.graphics.textureHandle, 0);
@@ -63,6 +64,27 @@ void do_frame(const Win32Window & window, GameState& gameState) {
         // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
         uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+
+        scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(.6, .6, .6));
+        rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(-roto*2), glm::vec3(0.0f, 0.0f, 1.0f));
+        worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(-3, 0, 2)) * rotationMatrix * scaleMatrix;
+        // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
+        uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+    }
+
+    for (auto go : gameState.gameObjects) {
+        bindVertexArray(go->renderData.mesh->meshVertexArray);
+        bindShaderProgram(gameState.graphics.shaderProgram);
+        bindTexture(gameState.graphics.textureHandle, 0);
+        static float roto = 0.0f;
+        roto += 10.0f * frame_time;
+        auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(roto), glm::vec3(0.0f, 0.0f, 1.0f));
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(2, 0, 1)) * rotationMatrix * scaleMatrix;
+        // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
+        uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, go->renderData.mesh->index_count, 0);
     }
 
 
@@ -212,22 +234,52 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
          0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
          -0.5f,  0.5f, 0.0f, 0.0f, 1.0f,
         0.5, 0.5, 0.0f, 1.0f, 1.0f
-//
-// -32, -32, .0, 0, 0,
-//  32, -32, .0, 1, 0,
-//  -32,  32, .0, 0, 1,
-// 32,  32, .0, 1, 1,
 
     };
-
 
 
     std::vector<uint32_t> tri_indices = {
-        0,1, 2,
-        2, 1, 3
+        0,2, 1,
+        1, 2, 3
     };
 
-    importMeshFromFile("assets/test.glb");
+    // Our "current" default layout: pos|uv
+    std::vector<VertexAttributeDescription> vertexAttributes =  {
+        {"POSITION", 0, 3, DataType::Float, sizeof(float) * 5,
+            0 },
+
+        {"TEXCOORD", 0, 2, DataType::Float, sizeof(float) * 5,
+            sizeof(float) * 3 }
+    };
+
+    // Mesh Import and vertex buffer creation etc.
+    auto importedMeshes = importMeshFromFile("assets/test.glb");
+
+    for (auto im : importedMeshes) {
+        auto mesh = new Mesh();
+        mesh->index_count = im->indicesFlat.size();
+        mesh->meshVertexArray = createVertexArray();
+
+        // Now we assemble our pos|uv vertex layout:
+        std::vector<float> vertexList;
+        for (int i = 0; i < im->posMasterList.size(); i++) {
+            vertexList.push_back(im->posMasterList[i].x);
+            vertexList.push_back(im->posMasterList[i].y);
+            vertexList.push_back(im->posMasterList[i].z);
+            vertexList.push_back(im->uvMasterList[i].x);
+            vertexList.push_back(im->uvMasterList[i].y);
+        }
+        mesh->meshVertexBuffer = createVertexBuffer(vertexList.data(), vertexList.size() * sizeof(float), sizeof(float) * 5);
+        associateVertexBufferWithVertexArray(mesh->meshVertexBuffer, mesh->meshVertexArray);
+        mesh->meshIndexBuffer = createIndexBuffer(im->indicesFlat.data(), im->indicesFlat.size() * sizeof(uint32_t));
+        associateIndexBufferWithVertexArray( mesh->meshIndexBuffer, mesh->meshVertexArray);
+        describeVertexAttributes(vertexAttributes, mesh->meshVertexBuffer, gameState.graphics.shaderProgram, mesh->meshVertexArray);
+        gameState.meshPool[im->meshName] = mesh;
+    }
+
+    auto heroGo = new GameObject();
+    heroGo->renderData.mesh = gameState.meshPool["Cube.001"];
+    gameState.gameObjects.push_back(heroGo);
 
     gameState.graphics.vertexArray = createVertexArray();
     bindVertexArray(gameState.graphics.vertexArray);
@@ -238,20 +290,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
     // gameState.cameraData->view_matrix = glm::mat4(1);
     gameState.cameraData->projection_matrix = (glm::orthoLH_ZO<float>(0, 800, 0, 600, 0.0, 50));
     gameState.cameraData->projection_matrix = glm::perspectiveFovLH_ZO<float>(glm::radians(65.0f), width, height, 0.1, 100);
-    gameState.gameObjects.push_back(new GameObject());
+
 
     gameState.graphics.quadVertexBuffer = createVertexBuffer(tri_vertices.data(), tri_vertices.size() * sizeof(float), sizeof(float) * 5);
     associateVertexBufferWithVertexArray(gameState.graphics.quadVertexBuffer, gameState.graphics.vertexArray);
     gameState.graphics.quadIndexBuffer = createIndexBuffer(tri_indices.data(), tri_indices.size() * sizeof(uint32_t));
     associateIndexBufferWithVertexArray(gameState.graphics.quadIndexBuffer, gameState.graphics.vertexArray);
-
-    std::vector<VertexAttributeDescription> vertexAttributes =  {
-            {"POSITION", 0, 3, DataType::Float, sizeof(float) * 5,
-                0 },
-
-            {"TEXCOORD", 0, 2, DataType::Float, sizeof(float) * 5,
-                sizeof(float) * 3 }
-    };
     describeVertexAttributes(vertexAttributes, gameState.graphics.quadVertexBuffer, gameState.graphics.shaderProgram, gameState.graphics.vertexArray);
 
 
