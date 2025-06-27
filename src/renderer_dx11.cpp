@@ -19,12 +19,13 @@
 static ID3D11Device *device;
 static ID3D11DeviceContext *ctx;
 static IDXGISwapChain1 *swapChain;
-static ID3D11Debug* debugger;
+static ID3D11Debug *debugger;
 static ID3D11Texture2D *backBuffer;
-static ID3D11RenderTargetView* rtv;
-static ID3D11Texture2D* depthStencilBuffer;
+static ID3D11RenderTargetView *rtv;
+static ID3D11Texture2D *depthStencilBuffer;
 static ID3D11DepthStencilView *depthStencilView;
 static ID3D11DepthStencilState *m_DepthStencilState;
+static ID3D11SamplerState *defaultSamplerState;
 
 struct BufferWrapper {
     ID3D11Buffer* buffer;
@@ -50,6 +51,12 @@ struct DX11ShaderProgram {
     DX11Shader pixelShader;
 };
 
+struct DX11Texture {
+    ID3D11Texture2D* texture;
+    ID3D11ShaderResourceView* srv;
+    ID3D11RenderTargetView* rtv;
+    ID3D11DepthStencilView* dsv;
+};
 
 
 
@@ -58,11 +65,11 @@ static std::map<int, DX11Shader> pixelShaderMap;
 static std::map<int, DX11Shader> vertexShaderMap;
 static std::map<int, DX11ShaderProgram> shaderProgramMap;
 static std::map<int, BufferWrapper> vertexBufferMap;
+static std::map<int, BufferWrapper> constantBufferMap;
 static std::map<int, ID3D11Buffer*> indexBufferMap;
 static std::map<int, ID3D11InputLayout*> inputLayoutMap;
 static std::map<int, DX11VertexArray*> vertexArrayMap;
-static std::map<int, ID3D11Texture2D*> textureMap;
-
+static std::map<int, DX11Texture> textureMap;
 
 
 void initGraphics(Win32Window& window, bool msaa, int msaa_samples) {
@@ -224,6 +231,22 @@ void initGraphics(Win32Window& window, bool msaa, int msaa_samples) {
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
     ctx->RSSetViewports(1, &vp);
+
+    // Setup default sampler state
+
+    D3D11_SAMPLER_DESC sd;
+    ZeroMemory(&sd, sizeof(sd));
+    sd.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    sd.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    sd.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    sd.ComparisonFunc = D3D11_COMPARISON_NEVER;
+    sd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    sd.MinLOD = 0;
+    sd.MaxLOD = D3D11_FLOAT32_MAX;
+    hr = device->CreateSamplerState(&sd, &defaultSamplerState);
+    if (FAILED(hr)) {
+        exit(1);
+    }
 }
 #include <comdef.h>
 void present() {
@@ -265,8 +288,12 @@ GraphicsHandle createTexture(int width, int height, uint8_t *pixels) {
         exit(1);
     }
 
+    ID3D11ShaderResourceView *srv = nullptr;
+    res = device->CreateShaderResourceView(texture, NULL, &srv);
+    assert(SUCCEEDED(res));
+
     GraphicsHandle handle = {nextHandleId++};
-    textureMap[handle.id] = texture;
+    textureMap[handle.id] = {texture, srv, nullptr, nullptr };  // Currently we are only dealing with "standard" textures here
     return handle;
 }
 
@@ -353,6 +380,27 @@ GraphicsHandle createVertexBuffer(void* data, int size, uint32_t stride) {
 
 
 }
+
+GraphicsHandle createConstantBuffer(uint32_t size) {
+    ID3D11Buffer* buffer = nullptr;
+    D3D11_BUFFER_DESC desc = {};
+    desc.ByteWidth = size;
+    desc.Usage = D3D11_USAGE_DYNAMIC;
+    desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    desc.MiscFlags = 0;
+    desc.StructureByteStride = 0;
+
+    HRESULT hr = device->CreateBuffer(&desc, nullptr, &buffer);
+    if (FAILED(hr)) {
+        printf("Failed to create object buffer\n");
+        exit(1234);
+    }
+    GraphicsHandle handle = {nextHandleId++};
+    constantBufferMap[handle.id] = BufferWrapper {buffer, size, 0};
+    return handle;
+}
+
 void bindVertexBuffer(int bufferHandle) {
 
 }
@@ -388,6 +436,24 @@ void bindShaderProgram(GraphicsHandle programHandle) {
     auto shaderProgram = shaderProgramMap[programHandle.id];
     ctx->VSSetShader(shaderProgram.vertexShader.vertexShader, nullptr, 0);
     ctx->PSSetShader(shaderProgram.pixelShader.pixelShader, nullptr, 0);
+}
+
+void bindTexture(GraphicsHandle textureHandle, uint8_t slot) {
+    auto texture = textureMap[textureHandle.id];
+    ctx->PSSetShaderResources(slot, 1, &texture.srv);
+    ctx->PSSetSamplers(slot, 1, &defaultSamplerState);
+}
+
+void uploadConstantBufferData(GraphicsHandle bufferHandle, void *data, uint32_t size_in_bytes,  uint32_t bufferSlot) {
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    auto buffer = constantBufferMap[bufferHandle.id].buffer;
+
+    ctx->Map(buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+    memcpy(mapped.pData, data, size_in_bytes);
+    ctx->Unmap(buffer, 0);
+    ID3D11Buffer* buffers[] = { buffer };
+    ctx->VSSetConstantBuffers(bufferSlot, 1, buffers);
+
 }
 
 
@@ -443,18 +509,34 @@ DXGI_FORMAT getDXFormatForType(DataType type, int numberOfComponents = 3) {
     }
 }
 
-void associateVertexAttribute(uint32_t attributeLocation, int numberOfComponents, DataType type,
-    int stride, int offset, GraphicsHandle bufferHandle, GraphicsHandle shaderProgramHandle, GraphicsHandle vertexArrayHandle) {
+void describeVertexAttributes(std::vector<VertexAttributeDescription>& attributeDescriptions,  GraphicsHandle bufferHandle, GraphicsHandle shaderProgramHandle, GraphicsHandle vertexArrayHandle) {
 
     auto vs = shaderProgramMap[shaderProgramHandle.id];
 
     ID3D11InputLayout* outLayout;
-    D3D11_INPUT_ELEMENT_DESC layoutDesc[] = {
-         { "POSITION", attributeLocation, getDXFormatForType(type), 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-     };
+    std::vector<D3D11_INPUT_ELEMENT_DESC> layoutDescs;
+    std::vector<std::string> savedStrings;
+    for (auto& vad : attributeDescriptions) {
+        savedStrings.push_back(vad.semanticName);
+    }
+    int counter = 0;
+    for (auto& vad : attributeDescriptions) {
+        auto desc = D3D11_INPUT_ELEMENT_DESC { savedStrings[counter].c_str(), 0, getDXFormatForType(vad.type, vad.numberOfComponents),
+            vad.attributeLocation, vad.offset, D3D11_INPUT_PER_VERTEX_DATA, 0 };
+        layoutDescs.push_back(desc);
+        counter++;
 
-    auto result = device->CreateInputLayout(layoutDesc, 1, vs.vertexShader.blob->GetBufferPointer(), vs.vertexShader.blob->GetBufferSize(), &outLayout);
-    assert(SUCCEEDED(result));
+    }
+
+    auto result = device->CreateInputLayout(layoutDescs.data(),
+        layoutDescs.size(),
+        vs.vertexShader.blob->GetBufferPointer(),
+        vs.vertexShader.blob->GetBufferSize(),
+        &outLayout);
+    if(FAILED(result)) {
+        _com_error err(result);
+        std::wcerr << L"creation of input layout failed: " << _com_error(result).ErrorMessage() << std::endl;
+    }
 
     auto va = vertexArrayMap[vertexArrayHandle.id];
     va->inputLayout = outLayout;

@@ -7,6 +7,10 @@
 #include <vector>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+#include <glm/glm.hpp>
+#include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 static float frame_time = 0.0f;
 
@@ -43,9 +47,19 @@ void do_sw_frame(Win32Window& window) {
 void do_frame(const Win32Window & window, GameState& gameState) {
     clear(0, 0.2, 0, 1);
 
-    bindVertexArray(gameState.graphics.vertexArray);
-    bindShaderProgram(gameState.graphics.shaderProgram);
-    renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+    // Update camera
+
+    uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.cameraData, sizeof(CameraBuffer), 1);
+
+    for (auto go : gameState.gameObjects) {
+        bindVertexArray(gameState.graphics.vertexArray);
+        bindShaderProgram(gameState.graphics.shaderProgram);
+        bindTexture(gameState.graphics.textureHandle, 0);
+        auto worldMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+    }
+
 
     present();
 }
@@ -53,11 +67,7 @@ void do_frame(const Win32Window & window, GameState& gameState) {
 
  static std::string vshader_hlsl = R"(
 
-// struct VOut
-// {
-// 	float4 pos : SV_POSITION;
-// 	float2 tex : TEXCOORD0;
-// };
+
 //
 //
 //         VOut VShader(float4 position : POSITION, float2 tex : TEXCOORD0) {
@@ -77,9 +87,56 @@ void do_frame(const Win32Window & window, GameState& gameState) {
 //
 //
 //
-     float4 main(float4 pos : POSITION) : SV_POSITION {
-         return pos;
+    struct VOutput
+    {
+        float4 pos : SV_POSITION;
+        float2 uv : TEXCOORD0;
+    };
+
+    // Per object transformation (movement, rotation, scale)
+    cbuffer ObjectTransformBuffer : register(b0) {
+        matrix world_matrix;
+    };
+
+    // PerFrame
+    cbuffer CameraBuffer : register(b1) {
+        matrix view_matrix;
+        matrix projection_matrix;
+
+    };
+
+
+    VOutput main(float4 pos : POSITION, float2 uv : TEXCOORD0) {
+        VOutput output;
+
+        output.pos = mul(pos, world_matrix);
+        output.pos = mul(pos, view_matrix);
+        output.pos = mul(pos, projection_matrix);
+        output.uv = uv;
+
+        return output;
      }
+)";
+
+// Pipeline:
+// raw_vertex_data -> vertexShder -> pixelShader -> frameBuffer (screen)
+
+static std::string fshader_hlsl = R"(
+
+    struct VOutput
+     {
+     	float4 pos : SV_POSITION;
+     	float2 uv : TEXCOORD0;
+     };
+
+    Texture2D imageTexture;
+    SamplerState samplerState;
+
+    float4 main(VOutput pixelShaderInput) : SV_TARGET
+    {
+        return imageTexture.Sample(samplerState, pixelShaderInput.uv);
+        //return float4(1.0, 1.0, 0.0, 1.0); // yellow for dx11
+    }
 )";
 
 
@@ -91,21 +148,14 @@ static std::string vshader_glsl = R"(
     layout(location = 1) in vec2 uv;
     layout(location = 2) in vec3 normal;
 
+
     void main() {
         gl_Position = vec4(pos, 1);
     };
 
 )";
 
-static std::string fshader_hlsl = R"(
 
-
-
-    float4 main() : SV_TARGET
-    {
-        return float4(1.0, 1.0, 0.0, 1.0); // yellow for dx11
-    }
-)";
 
 static std::string fshader_glsl = R"(
     #version 460
@@ -131,6 +181,13 @@ uint8_t* load_image(const std::string& fileName, int* width, int* height) {
 
 }
 
+struct VOutput
+{
+    glm::vec4 pos;
+    glm::vec2 tex;
+};
+
+
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
     int width = 800;
@@ -146,12 +203,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
     gameState.graphics.shaderProgram = createShaderProgram(vshader_hlsl, fshader_hlsl);
 
     std::vector<float> tri_vertices = {
-        -0.5f, -0.5f, 0.0f,
-         0.5f, -0.5f, 0.0f,
-         -0.5f,  0.5f, 0.0f,
-        0.5, 0.5, 0.0f,
+        -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,
+         0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
+         -0.5f,  0.5f, 0.0f, 0.0f, 1.0f,
+        0.5, 0.5, 0.0f, 1.0f, 1.0f
 
     };
+
+
 
     std::vector<uint32_t> tri_indices = {
         0,1, 2,
@@ -160,18 +219,31 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
 
     gameState.graphics.vertexArray = createVertexArray();
     bindVertexArray(gameState.graphics.vertexArray);
-    gameState.graphics.vertexBuffer = createVertexBuffer(tri_vertices.data(), tri_vertices.size() * sizeof(float), sizeof(float) * 3);
-    associateVertexBufferWithVertexArray(gameState.graphics.vertexBuffer, gameState.graphics.vertexArray);
-    gameState.graphics.indexBuffer = createIndexBuffer(tri_indices.data(), tri_indices.size() * sizeof(uint32_t));
-    associateIndexBufferWithVertexArray(gameState.graphics.indexBuffer, gameState.graphics.vertexArray);
+    gameState.graphics.objectTransformBuffer = createConstantBuffer(sizeof(glm::mat4));
+    gameState.graphics.cameraTransformBuffer = createConstantBuffer(sizeof(glm::mat4) * 2);
+    gameState.cameraData = new CameraBuffer();
+    gameState.cameraData->view_matrix = glm::lookAtLH(glm::vec3(0, 0, -3), glm::vec3(0, 0, 3), glm::vec3(0, 1, 0));
+    gameState.cameraData->projection_matrix = glm::orthoLH<float>(0, width, 0, height, 0.1, 100);
+    gameState.gameObjects.push_back(new GameObject());
 
-    associateVertexAttribute(0, 3, DataType::Float, 0,
-        0, gameState.graphics.vertexBuffer, gameState.graphics.shaderProgram, gameState.graphics.vertexArray);
+    gameState.graphics.quadVertexBuffer = createVertexBuffer(tri_vertices.data(), tri_vertices.size() * sizeof(float), sizeof(float) * 5);
+    associateVertexBufferWithVertexArray(gameState.graphics.quadVertexBuffer, gameState.graphics.vertexArray);
+    gameState.graphics.quadIndexBuffer = createIndexBuffer(tri_indices.data(), tri_indices.size() * sizeof(uint32_t));
+    associateIndexBufferWithVertexArray(gameState.graphics.quadIndexBuffer, gameState.graphics.vertexArray);
+
+    std::vector<VertexAttributeDescription> vertexAttributes =  {
+            {"POSITION", 0, 3, DataType::Float, sizeof(float) * 5,
+                0 },
+
+            {"TEXCOORD", 0, 2, DataType::Float, sizeof(float) * 5,
+                sizeof(float) * 3 }
+    };
+    describeVertexAttributes(vertexAttributes, gameState.graphics.quadVertexBuffer, gameState.graphics.shaderProgram, gameState.graphics.vertexArray);
+
 
     int image_width, image_height;
-
     auto pixels = load_image("../assets/test.png", &image_width, &image_height);
-    auto textureHandle = createTexture(image_width, image_height, pixels);
+    gameState.graphics.textureHandle = createTexture(image_width, image_height, pixels);
 
     bool running = true;
     while (running) {

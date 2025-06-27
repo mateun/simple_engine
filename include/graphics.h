@@ -5,6 +5,7 @@
 #ifndef GRAPHICS_H
 #define GRAPHICS_H
 
+#include <vector>
 #include <Win32Window.h>
 
 struct GraphicsHandle {
@@ -38,21 +39,33 @@ enum class DataType {
     FloatVec4,
 };
 
+struct VertexAttributeDescription {
+    std::string semanticName;       // "needed" only by DX11
+    uint32_t attributeLocation;
+    int numberOfComponents;     // single float, or a vec2, vec3 for positions, normals?!
+    DataType type;              //
+    int stride;
+    uint32_t offset;
+
+};
+
 GraphicsHandle createTexture(int width, int height, uint8_t* pixels);
 GraphicsHandle createShader(const std::string& code, ShaderType type);
 GraphicsHandle createShaderProgram(const std::string& vsCode, const std::string& fsCode);
 GraphicsHandle createVertexBuffer(void* data, int size, uint32_t stride=0);
+GraphicsHandle createConstantBuffer(uint32_t size);
 GraphicsHandle createIndexBuffer(void* data, int size);
 GraphicsHandle createVertexArray();
 void initGraphics(Win32Window& window, bool msaa, int msaa_samples);
 void clear(float r, float g, float b, float a);
-void associateVertexAttribute(uint32_t attributeLocation, int numberOfComponents, DataType type, int stride, int offset,
-        GraphicsHandle bufferHandle, GraphicsHandle shaderProgramHandle, GraphicsHandle vertexArrayHandle);
+void describeVertexAttributes(std::vector<VertexAttributeDescription>& attributeDescriptions,  GraphicsHandle bufferHandle, GraphicsHandle shaderProgramHandle, GraphicsHandle vertexArrayHandle);
 void associateVertexBufferWithVertexArray(GraphicsHandle vertexBuffer, GraphicsHandle vertexArray);
 void associateIndexBufferWithVertexArray(GraphicsHandle indexBuffer, GraphicsHandle vertexArray);
 void bindVertexBuffer(GraphicsHandle bufferHandle);
 void bindVertexArray(GraphicsHandle vaoHandle);
 void bindShaderProgram(GraphicsHandle programHandle);
+void bindTexture(GraphicsHandle textureHandle, uint8_t slot);
+void uploadConstantBufferData(GraphicsHandle bufferHandle, void* data, uint32_t size_in_bytes, uint32_t bufferSlot);
 void renderGeometry(PrimitiveType primitiveType);
 void renderGeometryIndexed(PrimitiveType primitiveType, int count, int startIndex);
 void present();
