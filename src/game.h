@@ -4,8 +4,18 @@
 
 #ifndef GAME_H
 #define GAME_H
+#include <map>
+
 #include "glm/vec3.hpp"
 #include <glm/glm.hpp>
+
+struct Mesh {
+    GraphicsHandle transformBuffer;
+    GraphicsHandle meshVertexBuffer;
+    GraphicsHandle meshIndexBuffer;
+    GraphicsHandle meshVertexArray;
+    uint32_t index_count;
+};
 
 struct GameObject {
 
@@ -18,11 +28,12 @@ struct GameObject {
     struct RenderData {
         GraphicsHandle transformBuffer;
         GraphicsHandle materialBuffer;
-        GraphicsHandle meshBuffer;
+        GraphicsHandle meshVertexBuffer;
         GraphicsHandle meshIndexBuffer;
         GraphicsHandle meshVertexArray;
         GraphicsHandle meshTextureHandle;
         GraphicsHandle meshShaderProgram;
+        Mesh* mesh = nullptr;
     } renderData;
 
 
@@ -38,7 +49,11 @@ struct CameraBuffer {
 
 };
 
+
+
 struct GameState {
+
+    std::map<std::string, Mesh*> meshPool;
 
     struct GraphicsState {
         GraphicsHandle shaderProgram;
