@@ -55,9 +55,11 @@ void do_frame(const Win32Window & window, GameState& gameState) {
         bindVertexArray(gameState.graphics.vertexArray);
         bindShaderProgram(gameState.graphics.shaderProgram);
         bindTexture(gameState.graphics.textureHandle, 0);
-        auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        static float roto = 0.0f;
+        roto += 10.0f * frame_time;
+        auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(roto), glm::vec3(0.0f, 0.0f, 1.0f));
         auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(64, 64, 1));
-        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(400, 0, 2)) * rotationMatrix * scaleMatrix;
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(400, 300, 2)) * rotationMatrix * scaleMatrix;
         // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
         uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
@@ -230,9 +232,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
     gameState.graphics.objectTransformBuffer = createConstantBuffer(sizeof(glm::mat4));
     gameState.graphics.cameraTransformBuffer = createConstantBuffer(sizeof(glm::mat4) * 2);
     gameState.cameraData = new CameraBuffer();
-    //gameState.cameraData->view_matrix = glm::lookAtLH(glm::vec3(0, 0, 0), glm::vec3(0, 0, 3), glm::vec3(0, 1, 0));
-    gameState.cameraData->view_matrix = glm::mat4(1);
-    gameState.cameraData->projection_matrix = (glm::orthoLH_ZO<float>(0, 800, -300, 300, 0.0, 5));
+    gameState.cameraData->view_matrix = glm::lookAtLH(glm::vec3(0, 0, -2), glm::vec3(0, 0, 3), glm::vec3(0, 1, 0));
+    // gameState.cameraData->view_matrix = glm::mat4(1);
+    gameState.cameraData->projection_matrix = (glm::orthoLH_ZO<float>(0, 800, 0, 600, 0.0, 50));
     gameState.gameObjects.push_back(new GameObject());
 
     gameState.graphics.quadVertexBuffer = createVertexBuffer(tri_vertices.data(), tri_vertices.size() * sizeof(float), sizeof(float) * 5);
