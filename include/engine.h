@@ -70,6 +70,8 @@ void renderGeometry(PrimitiveType primitiveType);
 void renderGeometryIndexed(PrimitiveType primitiveType, int count, int startIndex);
 void present();
 
+void importMeshFromFile(const std::string& fileName);
+
 
 // TODO is this really part of the common graphics interface?!
 // Maybe yes, we could prepare a background texture to allow single pixel setting even

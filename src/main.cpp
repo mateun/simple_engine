@@ -1,8 +1,8 @@
 #include <iostream>
 #include <Win32Window.h>
-#include <graphics.h>
+#include <engine.h>
 #define GRAPHICS_IMPLEMENTATION
-#include <graphics.h>
+#include <engine.h>
 #include "game.h"
 #include <vector>
 #define STB_IMAGE_IMPLEMENTATION
@@ -58,8 +58,8 @@ void do_frame(const Win32Window & window, GameState& gameState) {
         static float roto = 0.0f;
         roto += 10.0f * frame_time;
         auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(roto), glm::vec3(0.0f, 0.0f, 1.0f));
-        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(64, 64, 1));
-        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(400, 300, 2)) * rotationMatrix * scaleMatrix;
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, 2)) * rotationMatrix * scaleMatrix;
         // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
         uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
@@ -227,6 +227,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
         2, 1, 3
     };
 
+    importMeshFromFile("assets/test.glb");
+
     gameState.graphics.vertexArray = createVertexArray();
     bindVertexArray(gameState.graphics.vertexArray);
     gameState.graphics.objectTransformBuffer = createConstantBuffer(sizeof(glm::mat4));
@@ -235,6 +237,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
     gameState.cameraData->view_matrix = glm::lookAtLH(glm::vec3(0, 0, -2), glm::vec3(0, 0, 3), glm::vec3(0, 1, 0));
     // gameState.cameraData->view_matrix = glm::mat4(1);
     gameState.cameraData->projection_matrix = (glm::orthoLH_ZO<float>(0, 800, 0, 600, 0.0, 50));
+    gameState.cameraData->projection_matrix = glm::perspectiveFovLH_ZO<float>(glm::radians(65.0f), width, height, 0.1, 100);
     gameState.gameObjects.push_back(new GameObject());
 
     gameState.graphics.quadVertexBuffer = createVertexBuffer(tri_vertices.data(), tri_vertices.size() * sizeof(float), sizeof(float) * 5);
@@ -253,7 +256,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
 
 
     int image_width, image_height;
-    auto pixels = load_image("../assets/test.png", &image_width, &image_height);
+    auto pixels = load_image("assets/test.png", &image_width, &image_height);
     gameState.graphics.textureHandle = createTexture(image_width, image_height, pixels);
 
     bool running = true;
