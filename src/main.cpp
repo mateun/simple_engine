@@ -48,7 +48,6 @@ void do_frame(const Win32Window & window, GameState& gameState) {
     clear(0, 0.2, 0, 1);
 
     // Update camera
-
     uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.cameraData, sizeof(CameraBuffer), 1);
 
     // Render test for our 2d quad
@@ -73,12 +72,27 @@ void do_frame(const Win32Window & window, GameState& gameState) {
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
     }
 
+    // Render testwise text
+    auto textMesh = gameState.meshPool["text1"];
+    bindVertexArray(textMesh->meshVertexArray);
+    bindShaderProgram(gameState.graphics.shaderProgram);
+    bindTexture(gameState.graphics.fontHandle, 0); // This is not the textre, but the font handle, which carries the texture. TODO think of how we could extract this in a good way.
+    static float roto = 0.0f;
+    roto += 5.0f * frame_time;
+    auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(roto), glm::vec3(0.0f, 0.0f, 1.0f));
+    auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+    auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(2, 0, 1)) * rotationMatrix * scaleMatrix;
+    // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
+    uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+    renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+
+    // Render each game object
     for (auto go : gameState.gameObjects) {
         bindVertexArray(go->renderData.mesh->meshVertexArray);
         bindShaderProgram(gameState.graphics.shaderProgram);
         bindTexture(gameState.graphics.textureHandle, 0);
         static float roto = 0.0f;
-        roto += 10.0f * frame_time;
+        roto += 5.0f * frame_time;
         auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(roto), glm::vec3(0.0f, 0.0f, 1.0f));
         auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
         auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(2, 0, 1)) * rotationMatrix * scaleMatrix;
@@ -122,7 +136,7 @@ void do_frame(const Win32Window & window, GameState& gameState) {
 
     // Per object transformation (movement, rotation, scale)
     cbuffer ObjectTransformBuffer : register(b0) {
-        row_major float4x4 world_matrix;
+        row_major matrix world_matrix;
     };
 
     // PerFrame
@@ -173,11 +187,23 @@ static std::string vshader_glsl = R"(
 
     layout(location = 0) in vec3 pos;
     layout(location = 1) in vec2 uv;
-    layout(location = 2) in vec3 normal;
+    //layout(location = 2) in vec3 normal;
 
+    layout(std140, binding = 0) uniform ObjectTransformBuffer {
+        mat4 worldMatrix;
+    } objectTransform;
+
+    layout(std140, binding = 1) uniform CameraBuffer {
+        mat4 viewMatrix;
+        mat4 projectionMatrix;
+    } camera;
+
+    out vec2 fs_uv;
 
     void main() {
-        gl_Position = vec4(pos, 1);
+        gl_Position = camera.projectionMatrix * camera.viewMatrix * objectTransform.worldMatrix * vec4(pos, 1);
+        fs_uv = uv;
+
     };
 
 )";
@@ -187,10 +213,16 @@ static std::string vshader_glsl = R"(
 static std::string fshader_glsl = R"(
     #version 460
 
+    layout(binding = 0) uniform sampler2D diffuseTexture;
+
+
     out vec4 color;
 
+    in vec2 fs_uv;
+
     void main() {
-        color = vec4(1, 0, 0, 1);
+        //color = vec4(1, 0, 0, 1);
+        color = texture(diffuseTexture, fs_uv);
     }
 
 )";
@@ -227,7 +259,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
     // auto fs = createShader(fshader_code, ShaderType::Fragment);
 
     GameState gameState;
+
+#ifdef RENDERER_GL46
+    gameState.graphics.shaderProgram = createShaderProgram(vshader_glsl, fshader_glsl);
+#endif
+#ifdef RENDERER_DX11
     gameState.graphics.shaderProgram = createShaderProgram(vshader_hlsl, fshader_hlsl);
+#endif
 
     std::vector<float> tri_vertices = {
         -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,
@@ -252,8 +290,31 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
             sizeof(float) * 3 }
     };
 
+    // Render a fixed text:
+    gameState.graphics.fontHandle = createFont("assets/consola.ttf", 16);
+    auto textData = renderTextIntoQuadGeometry(gameState.graphics.fontHandle, "hello world!");
+    std::vector<float> textVertexList;
+    for (int i = 0; i < textData->posMasterList.size(); i++) {
+        textVertexList.push_back(textData->posMasterList[i].x);
+        textVertexList.push_back(textData->posMasterList[i].y);
+        textVertexList.push_back(textData->posMasterList[i].z);
+        textVertexList.push_back(textData->uvMasterList[i].x);
+        textVertexList.push_back(textData->uvMasterList[i].y);
+    }
+    Mesh *textMesh = new Mesh();
+    textMesh->meshVertexArray = createVertexArray();
+    textMesh->meshVertexBuffer = createVertexBuffer(textVertexList.data(), textVertexList.size() * sizeof(float), sizeof(float) * 5);
+    associateVertexBufferWithVertexArray(textMesh->meshVertexBuffer, textMesh->meshVertexArray);
+    textMesh->meshIndexBuffer = createIndexBuffer(textData->indicesFlat.data(), textData->indicesFlat.size() * sizeof(uint32_t));
+    associateIndexBufferWithVertexArray( textMesh->meshIndexBuffer, textMesh->meshVertexArray);
+    describeVertexAttributes(vertexAttributes, textMesh->meshVertexBuffer, gameState.graphics.shaderProgram, textMesh->meshVertexArray);
+    gameState.meshPool["text1"] = textMesh;
+    // End text rendering (huge... TODO improve)
+
     // Mesh Import and vertex buffer creation etc.
     auto importedMeshes = importMeshFromFile("assets/test.glb");
+
+
 
     for (auto im : importedMeshes) {
         auto mesh = new Mesh();
@@ -291,7 +352,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
     gameState.cameraData->projection_matrix = (glm::orthoLH_ZO<float>(0, 800, 0, 600, 0.0, 50));
     gameState.cameraData->projection_matrix = glm::perspectiveFovLH_ZO<float>(glm::radians(65.0f), width, height, 0.1, 100);
 
-
     gameState.graphics.quadVertexBuffer = createVertexBuffer(tri_vertices.data(), tri_vertices.size() * sizeof(float), sizeof(float) * 5);
     associateVertexBufferWithVertexArray(gameState.graphics.quadVertexBuffer, gameState.graphics.vertexArray);
     gameState.graphics.quadIndexBuffer = createIndexBuffer(tri_indices.data(), tri_indices.size() * sizeof(uint32_t));
@@ -300,8 +360,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
 
 
     int image_width, image_height;
-    auto pixels = load_image("assets/test.png", &image_width, &image_height);
-    gameState.graphics.textureHandle = createTexture(image_width, image_height, pixels);
+    auto pixels = load_image("assets/debug_texture.jpg", &image_width, &image_height);
+    gameState.graphics.textureHandle = createTexture(image_width, image_height, pixels, 4);
 
     bool running = true;
     while (running) {

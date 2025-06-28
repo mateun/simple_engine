@@ -9,15 +9,15 @@
 #include <glm/glm.hpp>
 #include "engine.h"
 
-std::vector<MeshImportData*> importMeshFromFile(const std::string &fileName) {
+std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
     Assimp::Importer importer;
     auto scene = importer.ReadFile(fileName, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_LimitBoneWeights | aiProcess_CalcTangentSpace );
     assert(scene != nullptr);
 
-    std::vector<MeshImportData*> meshImportDatas;
+    std::vector<MeshData*> meshImportDatas;
     for (int meshIndex = 0; meshIndex < scene->mNumMeshes; meshIndex++) {
         auto mesh = scene->mMeshes[meshIndex];
-        auto meshImportData = new MeshImportData();
+        auto meshImportData = new MeshData();
         meshImportDatas.push_back(meshImportData);
 
         meshImportData->meshName = scene->mMeshes[meshIndex]->mName.C_Str();

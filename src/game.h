@@ -39,11 +39,11 @@ struct GameObject {
 
 };
 
-struct ObjectTransformBuffer {
+struct alignas(16) ObjectTransformBuffer {
     glm::mat4 world_matrix;
 };
 
-struct CameraBuffer {
+struct alignas(16) CameraBuffer {
     glm::mat4 view_matrix;
     glm::mat4 projection_matrix;
 
@@ -63,10 +63,17 @@ struct GameState {
         GraphicsHandle textureHandle;
         GraphicsHandle cameraTransformBuffer;
         GraphicsHandle objectTransformBuffer;
+        GraphicsHandle fontHandle;
     } graphics;
 
     std::vector<GameObject*> gameObjects;
     CameraBuffer * cameraData = nullptr;
+
+    // Text rendering (dummy/temp data for now)
+    size_t textIndexCount;
+    GraphicsHandle textVertexArray;
+    GraphicsHandle textVertexBuffer;
+    GraphicsHandle textIndexBuffer;
 };
 
 #endif //GAME_H

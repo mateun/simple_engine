@@ -28,7 +28,7 @@ message(STATUS "assimp dll path: " ${ASSIMP_DLL_DIR})
 
 
 # Copy assets
-file(GLOB ASSETS
+file(GLOB_RECURSE ASSETS CONFIGURE_DEPENDS
         assets/*.spv
         assets/*.vert
         assets/*.frag
@@ -38,12 +38,24 @@ file(GLOB ASSETS
         assets/*.glb
         assets/*.fbx
         assets/*.obj
+        assset/*.ttf
 )
-add_custom_command(TARGET app POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:app>/assets
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ASSETS} $<TARGET_FILE_DIR:app>/assets
-        COMMAND ${CMAKE_COMMAND} -E echo "Copied shaders and resources to output directory."
+
+#add_custom_command(TARGET app POST_BUILD
+#        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:app>/assets
+#        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ASSETS} $<TARGET_FILE_DIR:app>/assets
+#        COMMAND ${CMAKE_COMMAND} -E echo "Copied shaders and resources to output directory."
+#)
+
+# Custom target to copy assets on every build
+add_custom_target(
+        copy_assets ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/assets
+        $<TARGET_FILE_DIR:app>/assets
 )
+add_dependencies(app copy_assets)
+
 
 # Copy dlls
 file(GLOB DLLS

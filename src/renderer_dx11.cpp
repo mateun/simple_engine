@@ -148,7 +148,12 @@ void initGraphics(Win32Window& window, bool msaa, int msaa_samples) {
     }
 
     // Bind the backbuffer as our render target
-    result = device->CreateRenderTargetView(backBuffer, NULL, &rtv);
+    D3D11_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+    rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB; // ← THIS is where SRGB comes in
+    rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+    rtvDesc.Texture2D.MipSlice = 0;
+
+    result = device->CreateRenderTargetView(backBuffer, &rtvDesc, &rtv);
     if (FAILED(result)) {
         OutputDebugString(L"rtv creation failed\n");
         exit(1);
@@ -261,14 +266,14 @@ void present() {
 
 }
 
-GraphicsHandle createTexture(int width, int height, uint8_t *pixels) {
+GraphicsHandle createTexture(int width, int height, uint8_t *pixels, uint8_t num_channels) {
     assert(pixels != nullptr);
     ID3D11Texture2D *texture;
     D3D11_TEXTURE2D_DESC desc;
     ZeroMemory(&desc, sizeof(D3D11_TEXTURE2D_DESC));
     desc.Width = width;
     desc.Height = height;
-    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
     desc.Usage = D3D11_USAGE_DEFAULT;
     desc.CPUAccessFlags = 0;
     desc.MiscFlags = 0;
@@ -279,7 +284,7 @@ GraphicsHandle createTexture(int width, int height, uint8_t *pixels) {
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
     D3D11_SUBRESOURCE_DATA initialData = {};
     initialData.pSysMem = pixels;
-    initialData.SysMemPitch = width * 4;        // This is only true for 4 byte colors
+    initialData.SysMemPitch = width * num_channels;        // This is only true for 4 byte colors
     initialData.SysMemSlicePitch = 0;
 
     HRESULT res = device->CreateTexture2D(&desc, &initialData, &texture);
