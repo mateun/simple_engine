@@ -2,9 +2,11 @@
 // Created by mgrus on 25.06.2025.
 //
 
+#define NOMINMAX
 #ifndef GRAPHICS_H
 #define GRAPHICS_H
 
+#include <stb_truetype.h>
 #include <vector>
 #include <Win32Window.h>
 #include <glm/glm.hpp>
@@ -50,7 +52,11 @@ struct VertexAttributeDescription {
 
 };
 
-struct MeshImportData {
+// MeshData is a render backend agnostic representation of
+// vertex data for a mesh.
+// It includes positions, uvs, normals, indices, tangents
+// and joint binding data.
+struct MeshData {
     std::string meshName;
     std::vector<glm::vec3> posMasterList;
     std::vector<glm::vec3> posIndexSortedMasterList;
@@ -67,7 +73,17 @@ struct MeshImportData {
     uint32_t stride;    // The size in bytes of 1 vertex
 };
 
-GraphicsHandle createTexture(int width, int height, uint8_t* pixels);
+struct Font {
+    GraphicsHandle atlasTexture;
+    float maxDescent = std::numeric_limits<float>::max();
+    float lineHeight = std::numeric_limits<float>::min();
+    float baseLine = 0.0f;
+    std::vector<stbtt_bakedchar> bakedChars;
+
+};
+
+GraphicsHandle createFont(const std::string& fontName, int fontSize);
+GraphicsHandle createTexture(int width, int height, uint8_t* pixels, uint8_t num_channels);
 GraphicsHandle createShader(const std::string& code, ShaderType type);
 GraphicsHandle createShaderProgram(const std::string& vsCode, const std::string& fsCode);
 GraphicsHandle createVertexBuffer(void* data, int size, uint32_t stride=0);
@@ -85,10 +101,12 @@ void bindShaderProgram(GraphicsHandle programHandle);
 void bindTexture(GraphicsHandle textureHandle, uint8_t slot);
 void uploadConstantBufferData(GraphicsHandle bufferHandle, void* data, uint32_t size_in_bytes, uint32_t bufferSlot);
 void renderGeometry(PrimitiveType primitiveType);
+MeshData* renderTextIntoQuadGeometry(GraphicsHandle fontHandle, const std::string& text);
+
 void renderGeometryIndexed(PrimitiveType primitiveType, int count, int startIndex);
 void present();
 
-std::vector<MeshImportData*> importMeshFromFile(const std::string& fileName);
+std::vector<MeshData*> importMeshFromFile(const std::string& fileName);
 
 
 // TODO is this really part of the common graphics interface?!

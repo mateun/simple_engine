@@ -6,7 +6,7 @@
 
 #ifdef RENDERER_GL46
 #include <cassert>
-#include <graphics.h>
+#include <engine.h>
 #include <iostream>
 #include <map>
 #include <vector>
@@ -18,7 +18,17 @@ std::map<int, GLuint> programMap;
 std::map<int, GLuint> shaderMap;
 std::map<int, GLuint> vertexBufferMap;
 std::map<int, GLuint> indexBufferMap;
+std::map<int, GLuint> uniformBufferMap;
+std::map<int, GLuint> textureMap;
 std::map<int, GLuint> vaoMap;
+
+void assertNoGlError() {
+    auto err = glGetError();
+    if (err != GL_NO_ERROR) {
+        std::cerr << "gl error: " <<  glewGetErrorString(err) << std::endl;
+    }
+
+}
 
 static GLuint createFragmentShader(const std::string& code) {
     GLuint fshader = glCreateShader(GL_FRAGMENT_SHADER);
@@ -133,16 +143,74 @@ GLenum getGlTypeForDataType(DataType type) {
     }
 }
 
+void describeVertexAttributes(std::vector<VertexAttributeDescription>& attributeDescriptions,  GraphicsHandle bufferHandle, GraphicsHandle shaderProgramHandle, GraphicsHandle vertexArrayHandle) {
+    auto vao = vaoMap[vertexArrayHandle.id];
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBufferMap[bufferHandle.id]);
+    int location = 0;
+    for (auto desc : attributeDescriptions) {
+        glVertexAttribPointer(location, desc.numberOfComponents, getGlTypeForDataType(desc.type),
+        GL_FALSE, desc.stride, (void*)desc.offset);
+        glEnableVertexAttribArray(location);
+        location++;
+    }
+
+}
+
+GraphicsHandle createIndexBuffer(void* data, int size) {
+    GLuint ibo;
+    glGenBuffers(1, &ibo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, size, data, GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+    GraphicsHandle handle = {nextHandleId++};
+    indexBufferMap[handle.id] = ibo;
+    return handle;
+
+}
+
+GraphicsHandle createTexture(int width, int height, uint8_t* pixels) {
+    GLuint texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexImage2D(GL_TEXTURE_2D,
+                 0,
+                 GL_SRGB8_ALPHA8,       // TODO have common interface parameter and translate
+                 width,
+                 height,
+                 0,
+                 GL_RGBA,
+                 GL_UNSIGNED_BYTE,
+                 pixels);
+
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    GraphicsHandle handle = {nextHandleId++};
+    textureMap[handle.id] = texture;
+    return handle;
+
+
+}
+
+void bindTexture(GraphicsHandle textureHandle, uint8_t slot) {
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, textureMap[textureHandle.id]);
+    assertNoGlError();
+
+}
+
 
 void associateVertexAttribute(uint32_t attributeLocation, int numberOfComponents, DataType type, int stride, int offset,
     GraphicsHandle bufferHandle, GraphicsHandle shaderProgramHandle, GraphicsHandle vaoHandle) {
-    glBindBuffer(GL_ARRAY_BUFFER, vertexBufferMap[bufferHandle.id]);
-    glVertexAttribPointer(attributeLocation, numberOfComponents, getGlTypeForDataType(type),
-        GL_FALSE, stride, (void*)offset);
-    glEnableVertexAttribArray(attributeLocation);
+
 }
 
-GraphicsHandle createVertexBuffer(void* data, int size) {
+GraphicsHandle createVertexBuffer(void* data, int size, uint32_t stride) {
     GLuint vbo;
     glGenBuffers(1, &vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -165,15 +233,13 @@ void bindVertexArray(GraphicsHandle vaoHandle) {
 GraphicsHandle createVertexArray() {
     GLuint vao;
     glGenVertexArrays(1, &vao);
+    assertNoGlError();
     GraphicsHandle handle = {nextHandleId++};
     vaoMap[handle.id] = vao;
     return handle;
 }
 
-void assertNoGlError() {
-    auto err = glGetError();
-    assert(err == GL_NO_ERROR);
-}
+
 
 void bindVertexBuffer(GraphicsHandle bufferHandle) {
     // For the case of opengl we actually want to bind the vertex array object.(vao)
@@ -199,6 +265,10 @@ void associateVertexBufferWithVertexArray(GraphicsHandle vertexBuffer, GraphicsH
     // Try with noop for now
 }
 
+void renderGeometryIndexed(PrimitiveType type, int count, int startIndex) {
+    glDrawElements(getGLPrimitiveType(type), count, GL_UNSIGNED_INT, (void*)(startIndex * sizeof(uint32_t)));
+    assertNoGlError();
+}
 
 
 void renderGeometry(PrimitiveType type) {
@@ -344,7 +414,7 @@ void initGraphics(Win32Window& window, bool msaa, int msaa_samples) {
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
-    glFrontFace(GL_CCW);
+    glFrontFace(GL_CW);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_BLEND);
 
@@ -371,6 +441,30 @@ void initGraphics(Win32Window& window, bool msaa, int msaa_samples) {
 
 }
 
+void uploadConstantBufferData(GraphicsHandle handle, void* data, uint32_t size_in_bytes, uint32_t buffer_slot) {
+    auto buffer = uniformBufferMap[handle.id];
+    glBindBuffer(GL_UNIFORM_BUFFER, buffer);
+    glBindBufferBase(GL_UNIFORM_BUFFER, buffer_slot, buffer);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, size_in_bytes, data);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    assertNoGlError();
+
+}
+
+GraphicsHandle createConstantBuffer(uint32_t size) {
+
+    GLuint buffer;
+    glGenBuffers(1, &buffer);
+    glBindBuffer(GL_UNIFORM_BUFFER, buffer);
+    glBufferStorage(GL_UNIFORM_BUFFER, size, nullptr, GL_DYNAMIC_STORAGE_BIT);
+    assertNoGlError();
+    
+    GraphicsHandle handle = {nextHandleId++};
+    uniformBufferMap[handle.id] = buffer;
+    return handle;
+
+}
+
 void clear(float r, float g, float b, float a) {
     glClearColor(r, g, b, a);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -378,6 +472,14 @@ void clear(float r, float g, float b, float a) {
 
 void present() {
     SwapBuffers(GetDC(GetActiveWindow()));
+}
+
+void associateIndexBufferWithVertexArray(GraphicsHandle indexBuffer, GraphicsHandle vertexArray) {
+    auto vao = vaoMap[vertexArray.id];
+    auto ib = indexBufferMap[indexBuffer.id];
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib);
+    assertNoGlError();
 }
 
 #endif
