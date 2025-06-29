@@ -266,6 +266,15 @@ void present() {
 
 }
 
+DXGI_FORMAT getFormatByChannelNumber(int num_channels) {
+    switch (num_channels) {
+        case 1: return DXGI_FORMAT_R8_UNORM;
+        case 2: return DXGI_FORMAT_R8G8_UNORM;
+        case 4: return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+        default: return DXGI_FORMAT_UNKNOWN;
+    }
+}
+
 GraphicsHandle createTexture(int width, int height, uint8_t *pixels, uint8_t num_channels) {
     assert(pixels != nullptr);
     ID3D11Texture2D *texture;
@@ -273,7 +282,7 @@ GraphicsHandle createTexture(int width, int height, uint8_t *pixels, uint8_t num
     ZeroMemory(&desc, sizeof(D3D11_TEXTURE2D_DESC));
     desc.Width = width;
     desc.Height = height;
-    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    desc.Format = getFormatByChannelNumber(num_channels);
     desc.Usage = D3D11_USAGE_DEFAULT;
     desc.CPUAccessFlags = 0;
     desc.MiscFlags = 0;
@@ -442,6 +451,8 @@ void bindShaderProgram(GraphicsHandle programHandle) {
     ctx->VSSetShader(shaderProgram.vertexShader.vertexShader, nullptr, 0);
     ctx->PSSetShader(shaderProgram.pixelShader.pixelShader, nullptr, 0);
 }
+
+
 
 void bindTexture(GraphicsHandle textureHandle, uint8_t slot) {
     auto texture = textureMap[textureHandle.id];

@@ -73,6 +73,12 @@ GraphicsHandle createFont(const std::string& fontName, int fontSize) {
 
 }
 
+GraphicsHandle getTextureFromFont(GraphicsHandle fontHandle) {
+    auto font = fontMap[fontHandle.id];
+    return font.atlasTexture;
+
+}
+
 
 MeshData* renderTextIntoQuadGeometry(GraphicsHandle fontHandle, const std::string& text) {
 
@@ -87,8 +93,9 @@ MeshData* renderTextIntoQuadGeometry(GraphicsHandle fontHandle, const std::strin
         float baseline = font.baseLine;
         int charCounter = 0;
         for (auto c : text) {
+            float tempPenY = 0;
             stbtt_aligned_quad q;
-            stbtt_GetBakedQuad(font.bakedChars.data(), 512, 512, c - 32, &penX, &penY, &q, 0);
+            stbtt_GetBakedQuad(font.bakedChars.data(), 512, 512, c - 32, &penX, &tempPenY, &q, 1);
 
             float pixel_aligned_x0 = std::floor(q.x0 + 0.5f);
             float pixel_aligned_y0 = std::floor(q.y0 + 0.5f);
@@ -97,34 +104,47 @@ MeshData* renderTextIntoQuadGeometry(GraphicsHandle fontHandle, const std::strin
 
             q.x0 = pixel_aligned_x0;
             q.y0 = pixel_aligned_y0;
+            // q.y0 = -12;
+            // q.y0 = 0;
             q.x1 = pixel_aligned_x1;
             q.y1 = pixel_aligned_y1;
+            // q.y1 = 12;
 
-            meshData->posMasterList.push_back(glm::vec3(q.x0, q.y0, 0));
-            meshData->posMasterList.push_back(glm::vec3(q.x1, q.y0, 0));
-            meshData->posMasterList.push_back(glm::vec3(q.x1, q.y1, 0));
-            meshData->posMasterList.push_back(glm::vec3(q.x0, q.y1, 0));
+            // meshData->posMasterList.push_back(glm::vec3(q.x0, q.y0, 0));
+            // meshData->posMasterList.push_back(glm::vec3(q.x1, q.y0, 0));
+            // meshData->posMasterList.push_back(glm::vec3(q.x1, q.y1, 0));
+            // meshData->posMasterList.push_back(glm::vec3(q.x0, q.y1, 0));
 
 
-            meshData->uvMasterList.push_back({q.s0, q.t0});
-            meshData->uvMasterList.push_back({q.s1, q.t0});
-            meshData->uvMasterList.push_back({q.s1, q.t1});
-            meshData->uvMasterList.push_back({q.s0, q.t1});
+
+            float flipped_y0 = baseline - q.y1;
+            float flipped_y1 = baseline - q.y0;
+
+            meshData->posMasterList.push_back(glm::vec3(q.x0, flipped_y0, 0));
+            meshData->posMasterList.push_back(glm::vec3(q.x1, flipped_y0, 0));
+            meshData->posMasterList.push_back(glm::vec3(q.x1, flipped_y1, 0));
+            meshData->posMasterList.push_back(glm::vec3(q.x0, flipped_y1, 0));
+
+
+            // meshData->uvMasterList.push_back({q.s0, q.t0});
+            // meshData->uvMasterList.push_back({q.s1, q.t0});
+            // meshData->uvMasterList.push_back({q.s1, q.t1});
+            // meshData->uvMasterList.push_back({q.s0, q.t1});
 
             // Flip vertical uv coordinates
-            // uvs.push_back({q.s0, q.t1});
-            // uvs.push_back({q.s1, q.t1});
-            // uvs.push_back({q.s1, q.t0});
-            // uvs.push_back({q.s0, q.t0});
+            meshData->uvMasterList.push_back({q.s0, q.t1});
+            meshData->uvMasterList.push_back({q.s1, q.t1});
+            meshData->uvMasterList.push_back({q.s1, q.t0});
+            meshData->uvMasterList.push_back({q.s0, q.t0});
 
 
             int offset = charCounter * 4;
-            // outIndices.push_back(2 + offset);outIndices.push_back(1 + offset);outIndices.push_back(0 + offset);
-            // outIndices.push_back(2 + offset);outIndices.push_back(0 + offset);outIndices.push_back(3 + offset);
+            meshData->indicesFlat.push_back(2 + offset);meshData->indicesFlat.push_back(1 + offset);meshData->indicesFlat.push_back(0 + offset);
+            meshData->indicesFlat.push_back(2 + offset);meshData->indicesFlat.push_back(0 + offset);meshData->indicesFlat.push_back(3 + offset);
 
             // Flipped
-            meshData->indicesFlat.push_back(0 + offset);meshData->indicesFlat.push_back(1 + offset);meshData->indicesFlat.push_back(2 + offset);
-            meshData->indicesFlat.push_back(3 + offset);meshData->indicesFlat.push_back(0 + offset);meshData->indicesFlat.push_back(2 + offset);
+            // meshData->indicesFlat.push_back(0 + offset);meshData->indicesFlat.push_back(1 + offset);meshData->indicesFlat.push_back(2 + offset);
+            // meshData->indicesFlat.push_back(3 + offset);meshData->indicesFlat.push_back(0 + offset);meshData->indicesFlat.push_back(2 + offset);
             charCounter++;
 
            // Track min/max for bounding box
