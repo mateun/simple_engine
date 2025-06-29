@@ -90,6 +90,7 @@ GraphicsHandle createVertexBuffer(void* data, int size, uint32_t stride=0);
 GraphicsHandle createConstantBuffer(uint32_t size);
 GraphicsHandle createIndexBuffer(void* data, int size);
 GraphicsHandle createVertexArray();
+GraphicsHandle getTextureFromFont(GraphicsHandle fontHandle);
 void initGraphics(Win32Window& window, bool msaa, int msaa_samples);
 void clear(float r, float g, float b, float a);
 void describeVertexAttributes(std::vector<VertexAttributeDescription>& attributeDescriptions,  GraphicsHandle bufferHandle, GraphicsHandle shaderProgramHandle, GraphicsHandle vertexArrayHandle);

@@ -76,12 +76,10 @@ void do_frame(const Win32Window & window, GameState& gameState) {
     auto textMesh = gameState.meshPool["text1"];
     bindVertexArray(textMesh->meshVertexArray);
     bindShaderProgram(gameState.graphics.shaderProgram);
-    bindTexture(gameState.graphics.fontHandle, 0); // This is not the textre, but the font handle, which carries the texture. TODO think of how we could extract this in a good way.
-    static float roto = 0.0f;
-    roto += 5.0f * frame_time;
-    auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(roto), glm::vec3(0.0f, 0.0f, 1.0f));
-    auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
-    auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(2, 0, 1)) * rotationMatrix * scaleMatrix;
+    bindTexture(getTextureFromFont(gameState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
+    auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(.04, .04, 1));
+    auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(-2, 0, 1)) * rotationMatrix * scaleMatrix;
     // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
     uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
     renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
@@ -292,7 +290,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
 
     // Render a fixed text:
     gameState.graphics.fontHandle = createFont("assets/consola.ttf", 16);
-    auto textData = renderTextIntoQuadGeometry(gameState.graphics.fontHandle, "hello world!");
+    auto textData = renderTextIntoQuadGeometry(gameState.graphics.fontHandle, "hi, good game!");
     std::vector<float> textVertexList;
     for (int i = 0; i < textData->posMasterList.size(); i++) {
         textVertexList.push_back(textData->posMasterList[i].x);
@@ -302,6 +300,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
         textVertexList.push_back(textData->uvMasterList[i].y);
     }
     Mesh *textMesh = new Mesh();
+    textMesh->index_count = textData->indicesFlat.size();
     textMesh->meshVertexArray = createVertexArray();
     textMesh->meshVertexBuffer = createVertexBuffer(textVertexList.data(), textVertexList.size() * sizeof(float), sizeof(float) * 5);
     associateVertexBufferWithVertexArray(textMesh->meshVertexBuffer, textMesh->meshVertexArray);
