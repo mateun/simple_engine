@@ -47,8 +47,9 @@ void do_sw_frame(Win32Window& window) {
 void do_frame(const Win32Window & window, GameState& gameState) {
     clear(0, 0.2, 0, 1);
 
-    // Update camera
-    uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.cameraData, sizeof(CameraBuffer), 1);
+    // Render 3D scene
+    // Update perspective camera
+    uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.perspectiveCamera, sizeof(Camera), 1);
 
     // Render test for our 2d quad
     {
@@ -72,17 +73,7 @@ void do_frame(const Win32Window & window, GameState& gameState) {
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
     }
 
-    // Render testwise text
-    auto textMesh = gameState.meshPool["text1"];
-    bindVertexArray(textMesh->meshVertexArray);
-    bindShaderProgram(gameState.graphics.shaderProgram);
-    bindTexture(getTextureFromFont(gameState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
-    auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(.04, .04, 1));
-    auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(-2, 0, 1)) * rotationMatrix * scaleMatrix;
-    // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
-    uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-    renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+
 
     // Render each game object
     for (auto go : gameState.gameObjects) {
@@ -99,6 +90,21 @@ void do_frame(const Win32Window & window, GameState& gameState) {
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, go->renderData.mesh->index_count, 0);
     }
 
+
+    // Render 2D scene / UI:
+    // Render testwise text
+    uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.orthoCamera, sizeof(Camera), 1);
+
+    auto textMesh = gameState.meshPool["text1"];
+    bindVertexArray(textMesh->meshVertexArray);
+    bindShaderProgram(gameState.graphics.shaderProgram);
+    bindTexture(getTextureFromFont(gameState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
+    auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+    auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0, gameState.screen_height-32, 1)) * rotationMatrix * scaleMatrix;
+    // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
+    uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+    renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
 
     present();
 }
@@ -244,20 +250,7 @@ struct VOutput
     glm::vec2 tex;
 };
 
-
-
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
-    int width = 800;
-    int height = 600;
-    auto window = Win32Window(hInstance, SW_SHOWDEFAULT, L"my window", width, height);
-    initGraphics(window, false, 0);
-
-    // Shader initialization
-    // auto vs = createShader(vshader_code, ShaderType::Vertex);
-    // auto fs = createShader(fshader_code, ShaderType::Fragment);
-
-    GameState gameState;
-
+void initGame(GameState& gameState) {
 #ifdef RENDERER_GL46
     gameState.graphics.shaderProgram = createShaderProgram(vshader_glsl, fshader_glsl);
 #endif
@@ -315,6 +308,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
 
 
 
+
     for (auto im : importedMeshes) {
         auto mesh = new Mesh();
         mesh->index_count = im->indicesFlat.size();
@@ -345,11 +339,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
     bindVertexArray(gameState.graphics.vertexArray);
     gameState.graphics.objectTransformBuffer = createConstantBuffer(sizeof(glm::mat4));
     gameState.graphics.cameraTransformBuffer = createConstantBuffer(sizeof(glm::mat4) * 2);
-    gameState.cameraData = new CameraBuffer();
-    gameState.cameraData->view_matrix = glm::lookAtLH(glm::vec3(0, 0, -2), glm::vec3(0, 0, 3), glm::vec3(0, 1, 0));
-    // gameState.cameraData->view_matrix = glm::mat4(1);
-    gameState.cameraData->projection_matrix = (glm::orthoLH_ZO<float>(0, 800, 0, 600, 0.0, 50));
-    gameState.cameraData->projection_matrix = glm::perspectiveFovLH_ZO<float>(glm::radians(65.0f), width, height, 0.1, 100);
+    gameState.perspectiveCamera = new Camera();
+    gameState.perspectiveCamera->view_matrix = glm::lookAtLH(glm::vec3(0, 0, -2), glm::vec3(0, 0, 3), glm::vec3(0, 1, 0));
+    gameState.perspectiveCamera->projection_matrix = glm::perspectiveFovLH_ZO<float>(glm::radians(65.0f), gameState.screen_width,
+            gameState.screen_height, 0.1, 100);
+
+    gameState.orthoCamera = new Camera();
+    gameState.orthoCamera->view_matrix = glm::mat4(1);
+    gameState.orthoCamera->projection_matrix = (glm::orthoLH_ZO<float>(0, gameState.screen_width, 0, gameState.screen_height, 0.0, 50));
 
     gameState.graphics.quadVertexBuffer = createVertexBuffer(tri_vertices.data(), tri_vertices.size() * sizeof(float), sizeof(float) * 5);
     associateVertexBufferWithVertexArray(gameState.graphics.quadVertexBuffer, gameState.graphics.vertexArray);
@@ -361,6 +358,24 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
     int image_width, image_height;
     auto pixels = load_image("assets/debug_texture.jpg", &image_width, &image_height);
     gameState.graphics.textureHandle = createTexture(image_width, image_height, pixels, 4);
+}
+
+
+
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
+    int width = 800;
+    int height = 600;
+    auto window = Win32Window(hInstance, SW_SHOWDEFAULT, L"my window", width, height);
+    initGraphics(window, false, 0);
+
+    // Shader initialization
+    // auto vs = createShader(vshader_code, ShaderType::Vertex);
+    // auto fs = createShader(fshader_code, ShaderType::Fragment);
+
+    GameState gameState;
+    gameState.screen_width = width;
+    gameState.screen_height = height;
+    initGame(gameState);
 
     bool running = true;
     while (running) {
