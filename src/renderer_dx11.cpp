@@ -252,6 +252,23 @@ void initGraphics(Win32Window& window, bool msaa, int msaa_samples) {
     if (FAILED(hr)) {
         exit(1);
     }
+
+    D3D11_BLEND_DESC blendDesc = {};
+    blendDesc.RenderTarget[0].BlendEnable           = TRUE;
+    blendDesc.RenderTarget[0].SrcBlend              = D3D11_BLEND_SRC_ALPHA;
+    blendDesc.RenderTarget[0].DestBlend             = D3D11_BLEND_INV_SRC_ALPHA;
+    blendDesc.RenderTarget[0].BlendOp               = D3D11_BLEND_OP_ADD;
+    blendDesc.RenderTarget[0].SrcBlendAlpha         = D3D11_BLEND_ONE;
+    blendDesc.RenderTarget[0].DestBlendAlpha        = D3D11_BLEND_ZERO;
+    blendDesc.RenderTarget[0].BlendOpAlpha          = D3D11_BLEND_OP_ADD;
+    blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+
+    ID3D11BlendState* blendState = nullptr;
+    device->CreateBlendState(&blendDesc, &blendState);
+
+    // Then set it before drawing:
+    float blendFactor[4] = { 0, 0, 0, 0 };
+    ctx->OMSetBlendState(blendState, blendFactor, 0xffffffff);
 }
 #include <comdef.h>
 void present() {

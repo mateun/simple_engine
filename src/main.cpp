@@ -76,9 +76,9 @@ void do_frame(const Win32Window & window, GameState& gameState) {
 
 
     // Render each game object
+    bindShaderProgram(gameState.graphics.shaderProgram);
     for (auto go : gameState.gameObjects) {
         bindVertexArray(go->renderData.mesh->meshVertexArray);
-        bindShaderProgram(gameState.graphics.shaderProgram);
         bindTexture(gameState.graphics.textureHandle, 0);
         static float roto = 0.0f;
         roto += 5.0f * frame_time;
@@ -93,11 +93,11 @@ void do_frame(const Win32Window & window, GameState& gameState) {
 
     // Render 2D scene / UI:
     // Render testwise text
+    bindShaderProgram(gameState.graphics.textShaderProgram);
     uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.orthoCamera, sizeof(Camera), 1);
 
     auto textMesh = gameState.meshPool["text1"];
     bindVertexArray(textMesh->meshVertexArray);
-    bindShaderProgram(gameState.graphics.shaderProgram);
     bindTexture(getTextureFromFont(gameState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
     auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
@@ -105,6 +105,7 @@ void do_frame(const Win32Window & window, GameState& gameState) {
     // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
     uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
     renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+    // End text rendering
 
     present();
 }
@@ -163,8 +164,22 @@ void do_frame(const Win32Window & window, GameState& gameState) {
      }
 )";
 
-// Pipeline:
-// raw_vertex_data -> vertexShder -> pixelShader -> frameBuffer (screen)
+static std::string fs_text_hlsl = R"(
+    struct VOutput
+    {
+        float4 pos: SV_POSITION;
+        float2 uv: TEXCOORD0;
+    } input;
+
+    Texture2D imageTexture;
+    SamplerState samplerState;
+
+    float4 main(VOutput input) : SV_TARGET
+    {
+        float r = imageTexture.Sample(samplerState, input.uv).r;
+        return float4(1, 1 , 1, r);
+    };
+)";
 
 static std::string fshader_hlsl = R"(
 
@@ -256,6 +271,7 @@ void initGame(GameState& gameState) {
 #endif
 #ifdef RENDERER_DX11
     gameState.graphics.shaderProgram = createShaderProgram(vshader_hlsl, fshader_hlsl);
+    gameState.graphics.textShaderProgram = createShaderProgram(vshader_hlsl, fs_text_hlsl);
 #endif
 
     std::vector<float> tri_vertices = {

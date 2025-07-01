@@ -64,6 +64,7 @@ struct GameState {
         GraphicsHandle cameraTransformBuffer;
         GraphicsHandle objectTransformBuffer;
         GraphicsHandle fontHandle;
+        GraphicsHandle textShaderProgram;
     } graphics;
 
     std::vector<GameObject*> gameObjects;
