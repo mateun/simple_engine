@@ -52,6 +52,17 @@ struct VertexAttributeDescription {
 
 };
 
+struct Joint {
+    std::string name;
+    glm::mat4 inverseBindMatrix;
+    glm::mat4 localTransform;
+    Joint* parent = nullptr;
+};
+
+struct Skeleton {
+    std::vector<Joint*> joints;
+};
+
 // MeshData is a render backend agnostic representation of
 // vertex data for a mesh.
 // It includes positions, uvs, normals, indices, tangents
@@ -71,6 +82,9 @@ struct MeshData {
     std::vector<uint32_t> indicesFlat;
 
     uint32_t stride;    // The size in bytes of 1 vertex
+
+    // Optional
+    Skeleton * skeleton = nullptr;
 };
 
 struct Font {
