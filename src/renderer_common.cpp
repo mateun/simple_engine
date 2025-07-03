@@ -8,11 +8,14 @@
 #include "engine.h"
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb_truetype.h>
+#include <assimp/anim.h>
+#include <assimp/vector3.h>
 
 #include "engine.h"
 #include "engine.h"
 #include "engine.h"
 #include "engine.h"
+#include "glm/detail/type_quat.hpp"
 #include "glm/ext/matrix_clip_space.hpp"
 #include "glm/ext/matrix_transform.hpp"
 
@@ -38,8 +41,74 @@ Mesh * MeshData::toMesh() {
     mesh->meshIndexBuffer = createIndexBuffer(indicesFlat.data(), indicesFlat.size() * sizeof(uint32_t));
     associateIndexBufferWithVertexArray( mesh->meshIndexBuffer, mesh->meshVertexArray);
     mesh->skeleton = skeleton;
-
     return mesh;
+}
+
+
+StartEndKeyFrame getStartEndKeyFrameForTime(float time, Animation* animation, KeyFrameType type, std::string jointName) {
+    auto jointAnimationTrack = animation->jointAnimationTracks[jointName];
+
+    auto timeForType = [] (KeyFrameType type, void* kf ) -> float {
+        if (type == KeyFrameType::Translation || type == KeyFrameType::Scale) {
+            return ((aiVectorKey*) kf)->mTime;
+        }
+        if (type == KeyFrameType::Rotation) {
+            return ((aiQuatKey*) kf)->mTime;
+        }
+    };
+
+    auto extractPositions = [jointAnimationTrack, time] () -> std::pair<aiVectorKey, aiVectorKey> {
+        for (int i = 0; i < jointAnimationTrack.positionKeys.size()-1; i++) {
+            aiVectorKey kf = jointAnimationTrack.positionKeys[i];
+            aiVectorKey kfPlusOne = jointAnimationTrack.positionKeys[i +1];
+            if (time >= kf.mTime && time < kfPlusOne.mTime) {
+                return std::make_pair(kf, kfPlusOne);
+            }
+
+        }
+    };
+
+    auto extractRotations = [jointAnimationTrack, time] () -> std::pair<aiQuatKey, aiQuatKey> {
+        for (int i = 0; i < jointAnimationTrack.rotationKeys.size()-1; i++) {
+            aiQuatKey kf = jointAnimationTrack.rotationKeys[i];
+            aiQuatKey kfPlusOne = jointAnimationTrack.rotationKeys[i +1];
+            if (time >= kf.mTime && time < kfPlusOne.mTime) {
+                return std::make_pair(kf, kfPlusOne);
+            }
+
+        }
+    };
+
+
+    auto extractScalings = [jointAnimationTrack, time] () -> std::pair<aiVectorKey, aiVectorKey> {
+        for (int i = 0; i < jointAnimationTrack.scaleKeys.size()-1; i++) {
+            aiVectorKey kf = jointAnimationTrack.scaleKeys[i];
+            aiVectorKey kfPlusOne = jointAnimationTrack.scaleKeys[i +1];
+            if (time >= kf.mTime && time < kfPlusOne.mTime) {
+                return std::make_pair(kf, kfPlusOne);
+            }
+
+        }
+    };
+
+    if (type == KeyFrameType::Translation) {
+        StartEndKeyFrame se ={};
+        se.posKeys= extractPositions();
+        return se;
+    }
+
+    if (type == KeyFrameType::Rotation) {
+        StartEndKeyFrame se ={};
+        se.rotKeys= extractRotations();
+        return se;
+    }
+
+    if (type == KeyFrameType::Scale) {
+        StartEndKeyFrame se ={};
+        se.scaleKeys= extractScalings();
+        return se;
+    }
+
 }
 
 glm::vec3 Camera::getForward() {
@@ -263,4 +332,12 @@ void updateText(Mesh &textMesh, GraphicsHandle fontHandle, const std::string &te
     updateBuffer(textMesh.meshIndexBuffer, BufferType::Index, textData->indicesFlat.data(), textData->indicesFlat.size() * sizeof(uint32_t));
 
 
+}
+
+glm::quat aiToGLM(aiQuaternion aiQuat) {
+     return glm::quat(aiQuat.w, aiQuat.x, aiQuat.y, aiQuat.z);
+}
+
+glm::vec3 aiToGLM(aiVector3D v) {
+    return glm::vec3(v.x, v.y, v.z);
 }

@@ -8,9 +8,15 @@
 
 #include <stb_truetype.h>
 #include <vector>
+#include <map>
 #include <Win32Window.h>
 #include <glm/glm.hpp>
+#include <assimp/vector3.h>
+#include <assimp/quaternion.h>
+#include <assimp/anim.h>
 
+struct Animation;
+struct JointAnimationTrack;
 struct Mesh;
 
 struct GraphicsHandle {
@@ -59,10 +65,20 @@ struct Joint {
     glm::mat4 inverseBindMatrix;
     glm::mat4 localTransform;
     Joint* parent = nullptr;
+    glm::mat4 poseLocalTransform;
+    glm::mat4 poseGlobalTransform;
+    glm::mat4 poseFinalTransform;
 };
 
 struct Skeleton {
     std::vector<Joint*> joints;
+    std::vector<Animation*> animations;
+};
+
+enum class KeyFrameType {
+    Translation,
+    Rotation,
+    Scale,
 };
 
 // MeshData is a render backend agnostic representation of
@@ -126,6 +142,28 @@ enum class FillMode {
     Wireframe,
 };
 
+
+
+struct aiVectorKey;
+struct aiQuatKey;
+struct JointAnimationTrack {
+    std::vector<aiVectorKey> positionKeys;
+    std::vector<aiQuatKey> rotationKeys;
+    std::vector<aiVectorKey> scaleKeys;
+};
+
+struct Animation {
+    std::string name;
+    float duration = -1;
+    std::map<std::string, JointAnimationTrack> jointAnimationTracks;
+};
+
+struct StartEndKeyFrame {
+    std::pair<aiVectorKey, aiVectorKey> posKeys;
+    std::pair<aiQuatKey, aiQuatKey> rotKeys;
+    std::pair<aiVectorKey, aiVectorKey> scaleKeys;
+};
+
 struct alignas(16) Camera {
     glm::vec3 getForward();
     glm::vec3 getRight();
@@ -168,6 +206,9 @@ GraphicsHandle createIndexBuffer(void* data, int size, BufferUsage usage = Buffe
 GraphicsHandle createVertexArray();
 GraphicsHandle getTextureFromFont(GraphicsHandle fontHandle);
 GraphicsHandle getDefaultTextShaderProgram();
+StartEndKeyFrame getStartEndKeyFrameForTime(float time, Animation* animation, KeyFrameType type, std::string jointName);
+glm::vec3 aiToGLM(aiVector3D);
+glm::quat aiToGLM(aiQuaternion aiQuat);
 void initGraphics(Win32Window& window, bool msaa, int msaa_samples);
 void clear(float r, float g, float b, float a);
 void describeVertexAttributes(std::vector<VertexAttributeDescription>& attributeDescriptions,  GraphicsHandle bufferHandle, GraphicsHandle shaderProgramHandle, GraphicsHandle vertexArrayHandle);

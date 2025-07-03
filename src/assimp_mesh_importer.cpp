@@ -121,11 +121,41 @@ std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
             }
         }
 
+
+
+
+
         // /////////////////////////////////////////////////////////////////////////////////////////////////////////////
         // Skeleton import:
         if (mesh->HasBones()) {
             std::map<std::string, Joint*> nameToJoint;
             meshImportData->skeleton = new Skeleton();
+
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // Animation import
+            if (scene->HasAnimations()) {
+                for (int animIndex = 0; animIndex < scene->mNumAnimations; animIndex++) {
+                    auto animation = scene->mAnimations[animIndex];
+                    auto myAnimation = new Animation();
+                    meshImportData->skeleton->animations.push_back(myAnimation);
+                    myAnimation->name = scene->mAnimations[animIndex]->mName.C_Str();
+                    myAnimation->duration = scene->mAnimations[animIndex]->mDuration;
+
+                    for (int channelIndex = 0; channelIndex < animation->mNumChannels; channelIndex++) {
+                        auto channel = animation->mChannels[channelIndex];
+                        auto node = scene->mRootNode->FindNode(channel->mNodeName.C_Str());
+                        JointAnimationTrack jointAnimTrack;
+                        jointAnimTrack.positionKeys = std::vector<aiVectorKey>(channel->mPositionKeys, channel->mPositionKeys + channel->mNumPositionKeys);
+                        jointAnimTrack.rotationKeys = std::vector<aiQuatKey>(channel->mRotationKeys, channel->mRotationKeys + channel->mNumRotationKeys);
+                        jointAnimTrack.scaleKeys = std::vector<aiVectorKey>(channel->mScalingKeys, channel->mScalingKeys + channel->mNumScalingKeys);
+                        myAnimation->jointAnimationTracks[channel->mNodeName.C_Str()] = jointAnimTrack;
+                    }
+
+                }
+
+            }
+
 
             // Gather all relevant bones, these are either
             // - leaf bones
@@ -138,6 +168,8 @@ std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
                 aiNode* node = stack.top();
                 lastParent = node;
                 stack.pop();
+
+
                 // Collect all leaf and animation joints:
                 if (isLeafJoint(node->mName.C_Str(), mesh) || isAnimatedJoint(node->mName.C_Str(), scene)) {
                     auto joint = new Joint();
@@ -149,9 +181,9 @@ std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
                 for (int i = static_cast<int>(node->mNumChildren) - 1; i >= 0; --i) {
                     auto child = node->mChildren[i];
                     std::string name = child->mName.C_Str();
-                    if (!name.contains("DEF")) {
-                        continue;
-                    }
+                    // if (!name.contains("DEF")) {
+                    //     continue;
+                    // }
                     stack.push(child);
                     if (isLeafJoint(child->mName.C_Str(), mesh) || isAnimatedJoint(child->mName.C_Str(), scene)) {
                         // Now lets check if this nodes parent was so far not represented as a joint:
@@ -226,21 +258,14 @@ std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
                 finalJointWeights.push_back(weights);
             }
 
-
-
             for (unsigned int b = 0; b < mesh->mNumBones; b++) {
                 auto bone= mesh->mBones[b];
                 auto node = scene->mRootNode->FindNode(bone->mName.C_Str());
                 auto joint = nameToJoint[bone->mName.C_Str()];
-                joint->parent = nullptr;
                 if (node->mParent && std::string(node->mParent->mName.C_Str()) != "Armature") {
                     auto parentJoint = nameToJoint[node->mParent->mName.C_Str()];
-                    if (!parentJoint) {
-                        parentJoint = new Joint();
-                        parentJoint->name = node->mParent->mName.C_Str();
-                        parentJoint->inverseBindMatrix = matrixAssimpToGLM(scene->mRootNode->FindNode(node->mParent->mName.C_Str())->mTransformation);
+                    if (parentJoint) {
                         joint->parent = parentJoint;
-                        nameToJoint[parentJoint->name] = parentJoint;
                     }
 
                 }

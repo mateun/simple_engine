@@ -7,10 +7,13 @@
 #include <vector>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+#include <assimp/anim.h>
 #include <glm/glm.hpp>
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+
+#include "glm/gtx/quaternion.hpp"
 
 static float frame_time = 0.0f;
 
@@ -129,38 +132,98 @@ void do_frame(const Win32Window & window, GameState& gameState) {
     for (auto go : gameState.gameObjects) {
         bindVertexArray(go->renderData.mesh->meshVertexArray);
         bindTexture(gameState.graphics.textureHandle, 0);
+
+        if (go->renderData.mesh->skeleton != nullptr) {
+            static float animationTime = 0.0f;
+            animationTime += frame_time;
+            if (go->renderData.mesh->skeleton->animations.size() > 0) {
+                // Run the first animation here
+                auto animation = go->renderData.mesh->skeleton->animations[0];
+                for (auto joint : go->renderData.mesh->skeleton->joints) {
+                    auto translationKeys = getStartEndKeyFrameForTime(animationTime, animation, KeyFrameType::Translation, joint->name);
+                    auto rotationKeys = getStartEndKeyFrameForTime(animationTime, animation, KeyFrameType::Rotation, joint->name);
+                    auto scalingKeys = getStartEndKeyFrameForTime(animationTime, animation, KeyFrameType::Scale, joint->name);
+
+                    // Translation interpolation:
+                    float t0 = translationKeys.posKeys.first.mTime;
+                    float t1 = translationKeys.posKeys.second.mTime;
+                    glm::vec3 p0 = aiToGLM(translationKeys.posKeys.first.mValue);
+                    glm::vec3 p1 = aiToGLM(translationKeys.posKeys.second.mValue);
+                    float t = ((float) animationTime - t0 ) / (float) (t1 - t0);
+                    glm::vec3 p = glm::mix(p0, p1, t);
+
+                    // Rotation interpolation
+                    t0 = rotationKeys.rotKeys.first.mTime;
+                    t1 = rotationKeys.rotKeys.second.mTime;
+                    glm::quat q0 = aiToGLM(rotationKeys.rotKeys.first.mValue);
+                    glm::quat q1 = aiToGLM(rotationKeys.rotKeys.second.mValue);
+                    t = ((float) animationTime - t0 ) / (float) (t1 - t0);
+                    glm::quat q = glm::slerp(q0, q1, t);
+
+                    // Scaling interpolation
+                    t0 = scalingKeys.scaleKeys.first.mTime;
+                    t1 = scalingKeys.scaleKeys.second.mTime;
+                    glm::quat s0 = aiToGLM(scalingKeys.scaleKeys.first.mValue);
+                    glm::quat s1 = aiToGLM(scalingKeys.scaleKeys.second.mValue);
+                    t = ((float) animationTime - t0 ) / (float) (t1 - t0);
+                    glm::quat s = glm::mix(s0, s1, t);
+
+                    joint->poseLocalTransform = translate(glm::mat4(1.0f), p) * glm::toMat4(q) * glm::toMat4(s);
+
+                }
+
+                // Now calculate the global pose for each joint:
+                for (auto j  : go->renderData.mesh->skeleton->joints) {
+                    if (j->parent) {
+                        j->poseGlobalTransform = j->parent->poseGlobalTransform * j->poseLocalTransform;
+                    } else {
+                        j->poseGlobalTransform = j->poseLocalTransform; // only the root bone has no parent.
+                    }
+                    j->poseFinalTransform = j->poseGlobalTransform * j->inverseBindMatrix;
+
+                }
+            }
+        }
+
+
+
+
+
+
         static float roto = 0.0f;
         roto += 0.0f * frame_time;
         auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(roto), glm::vec3(0.0f, 0.0f, 1.0f));
         auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
         auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, 1)) * rotationMatrix * scaleMatrix;
-        // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
+
         uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-        if (go->renderData.mesh->skeleton != nullptr) {
-            setFillMode(FillMode::Wireframe);
-        }
+        // if (go->renderData.mesh->skeleton != nullptr) {
+        //     setFillMode(FillMode::Wireframe);
+        // }
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, go->renderData.mesh->index_count, 0);
 
+        // Only show if a special xray button was pressed - TODO
         // If this is a skeletal mesh object we will render every joint of this mesh:
         // TODO bind this to a special debug mode or similar.
-        if (go->renderData.mesh->skeleton != nullptr) {
-            setFillMode(FillMode::Solid);
-            bindVertexArray(gameState.graphics.jointDebugMesh->meshVertexArray);
-            bindTexture(gameState.graphics.jointDebugTexture, 0);
-            auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(roto), glm::vec3(0.0f, 0.0f, 1.0f));
-            auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(.05, .05, .05));
-            auto translationMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, 1));
+        // if (go->renderData.mesh->skeleton != nullptr) {
+        //     setFillMode(FillMode::Solid);
+        //     bindVertexArray(gameState.graphics.jointDebugMesh->meshVertexArray);
+        //     bindTexture(gameState.graphics.jointDebugTexture, 0);
+        //     auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(roto), glm::vec3(0.0f, 0.0f, 1.0f));
+        //     auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(.05, .05, .05));
+        //     auto translationMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, 1));
+
 
             // Iterate all joints of the skeleton
-            for (auto& joint : go->renderData.mesh->skeleton->joints) {
-                auto worldMatrix = translationMatrix * glm::inverse(joint->inverseBindMatrix) *  scaleMatrix;
-                uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-                setDepthTesting(false);
-                renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, gameState.graphics.jointDebugMesh->index_count, 0);
-
-            }
-            setDepthTesting(true);
-        }
+            // for (auto& joint : go->renderData.mesh->skeleton->joints) {
+            //     auto worldMatrix = translationMatrix * glm::inverse(joint->inverseBindMatrix) *  scaleMatrix;
+            //     uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+            //     setDepthTesting(false);
+            //     renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, gameState.graphics.jointDebugMesh->index_count, 0);
+            //
+            // }
+            // setDepthTesting(true);
+        // }
     }
 
     // Render testmesh
@@ -401,7 +464,7 @@ void initGame(GameState& gameState) {
     for (auto im : importedMeshes) {
         auto mesh = im->toMesh();
         describeVertexAttributes(vertexAttributes, mesh->meshVertexBuffer, gameState.graphics.shaderProgram, mesh->meshVertexArray);
-        gameState.meshPool[im->meshName] = mesh;
+        gameState.meshPool["hero"] = mesh;
     }
 
     {
@@ -418,7 +481,7 @@ void initGame(GameState& gameState) {
     }
 
     auto heroGo = new GameObject();
-    heroGo->renderData.mesh = gameState.meshPool["Cube.001"];
+    heroGo->renderData.mesh = gameState.meshPool["hero"];
     gameState.gameObjects.push_back(heroGo);
 
     gameState.graphics.vertexArray = createVertexArray();
@@ -491,3 +554,4 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
     }
     return 0;
 }
+
