@@ -44,12 +44,61 @@ void do_sw_frame(Win32Window& window) {
 
 #endif
 
+void update_camera(GameState& gameState) {
+    float movementSpeed = 10.0f;
+    float camspeed = movementSpeed * frame_time;
+    float rotspeed = movementSpeed * frame_time;
+    float dir = 0;
+    float hdir = 0;
+    float yaw = 0;
+    float pitch = 0;
+
+    // This allows moving fwd/bwd in the current plane.
+    // So even if you look down pitched, you would still move level.
+    float panFwd = 0;
+    if (isKeyDown('E')
+        //|| getControllerAxis(ControllerAxis::RSTICK_X, 0) > 0.4
+        ) {
+        yaw = -1;
+    }
+
+    if (isKeyDown('W')) {
+        dir = 1;
+    }
+    if (isKeyDown('S')) {
+        dir = -1;
+    }
+    if (isKeyDown('A')) {
+        hdir = -1;
+    }
+    if (isKeyDown('D')) {
+        hdir = 1;
+    }
+
+    auto fwd = gameState.perspectiveCamera->getForward();
+    auto right = gameState.perspectiveCamera->getRight();
+    auto up = gameState.perspectiveCamera->getUp();
+
+    auto locCandidate = gameState.perspectiveCamera->location + glm::vec3{camspeed * fwd.x, 0, camspeed * fwd.z} * dir;
+    // Do any checks if needed.
+    gameState.perspectiveCamera->location = locCandidate;
+
+    gameState.perspectiveCamera->updatenAndGetViewMatrix();
+
+
+}
+
 void do_frame(const Win32Window & window, GameState& gameState) {
-    clear(0, 0.2, 0, 1);
+
+    update_camera(gameState);
+
+    setDepthTesting(true);
+    clear(0, 0.0, 0, 1);
+
 
     // Render 3D scene
     // Update perspective camera
-    uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.perspectiveCamera, sizeof(Camera), 1);
+    uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.perspectiveCamera->matrixBufferPtr(), sizeof(glm::mat4) * 2, 1);
 
     // Render test for our 2d quad
     {
@@ -57,15 +106,15 @@ void do_frame(const Win32Window & window, GameState& gameState) {
         bindShaderProgram(gameState.graphics.shaderProgram);
         bindTexture(gameState.graphics.textureHandle, 0);
         static float roto = 0.0f;
-        roto += 10.0f * frame_time;
+        roto += 0.0f * frame_time;
         auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(roto), glm::vec3(0.0f, 0.0f, 1.0f));
         auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
-        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, 2)) * rotationMatrix * scaleMatrix;
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(3, 0, 2)) * rotationMatrix * scaleMatrix;
         // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
         uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
 
-        scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(.6, .6, .6));
+        scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
         rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(-roto*2), glm::vec3(0.0f, 0.0f, 1.0f));
         worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(-3, 0, 2)) * rotationMatrix * scaleMatrix;
         // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
@@ -81,13 +130,52 @@ void do_frame(const Win32Window & window, GameState& gameState) {
         bindVertexArray(go->renderData.mesh->meshVertexArray);
         bindTexture(gameState.graphics.textureHandle, 0);
         static float roto = 0.0f;
-        roto += 5.0f * frame_time;
+        roto += 0.0f * frame_time;
         auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(roto), glm::vec3(0.0f, 0.0f, 1.0f));
         auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
-        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(2, 0, 1)) * rotationMatrix * scaleMatrix;
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, 1)) * rotationMatrix * scaleMatrix;
         // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
         uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        if (go->renderData.mesh->skeleton != nullptr) {
+            setFillMode(FillMode::Wireframe);
+        }
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, go->renderData.mesh->index_count, 0);
+
+        // If this is a skeletal mesh object we will render every joint of this mesh:
+        // TODO bind this to a special debug mode or similar.
+        if (go->renderData.mesh->skeleton != nullptr) {
+            setFillMode(FillMode::Solid);
+            bindVertexArray(gameState.graphics.jointDebugMesh->meshVertexArray);
+            bindTexture(gameState.graphics.jointDebugTexture, 0);
+            auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(roto), glm::vec3(0.0f, 0.0f, 1.0f));
+            auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(.05, .05, .05));
+            auto translationMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, 1));
+
+            // Iterate all joints of the skeleton
+            for (auto& joint : go->renderData.mesh->skeleton->joints) {
+                auto worldMatrix = translationMatrix * glm::inverse(joint->inverseBindMatrix) *  scaleMatrix;
+                uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+                setDepthTesting(false);
+                renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, gameState.graphics.jointDebugMesh->index_count, 0);
+
+            }
+            setDepthTesting(true);
+        }
+    }
+
+    // Render testmesh
+    {
+        bindShaderProgram(gameState.graphics.shaderProgram);
+        bindVertexArray(gameState.meshPool["testmesh4"]->meshVertexArray);
+        bindTexture(gameState.texturePool["testmesh4_texture"], 0);
+        auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(.25, .25, .25));
+        auto translationMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(-1, 1, 1));
+        auto worldMatrix = translationMatrix * rotationMatrix * scaleMatrix;
+        uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, gameState.meshPool["testmesh4"]->index_count, 0);
+
+
     }
 
 
@@ -96,16 +184,21 @@ void do_frame(const Win32Window & window, GameState& gameState) {
     bindShaderProgram(gameState.graphics.textShaderProgram);
     uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.orthoCamera, sizeof(Camera), 1);
 
-    auto textMesh = gameState.meshPool["text1"];
+    auto textMesh = gameState.textMesh;
+    static int frame = 0;
+    frame++;
+    updateText(*textMesh, gameState.graphics.fontHandle, "FTus: " + std::to_string(frame_time * 1000 * 1000));
     bindVertexArray(textMesh->meshVertexArray);
     bindTexture(getTextureFromFont(gameState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
     auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
-    auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0, gameState.screen_height-32, 1)) * rotationMatrix * scaleMatrix;
+    auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0, gameState.screen_height-64, 1)) * rotationMatrix * scaleMatrix;
     // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
     uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
     renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
     // End text rendering
+
+
 
     present();
 }
@@ -196,6 +289,7 @@ static std::string fshader_hlsl = R"(
     {
         return imageTexture.Sample(samplerState, pixelShaderInput.uv);
         //return float4(1.0, 1.0, 0.0, 1.0); // yellow for dx11
+        //return float4(pixelShaderInput.uv.x, pixelShaderInput.uv.y, 0, 1);
     }
 )";
 
@@ -299,52 +393,28 @@ void initGame(GameState& gameState) {
 
     // Render a fixed text:
     gameState.graphics.fontHandle = createFont("assets/consola.ttf", 16);
-    auto textData = renderTextIntoQuadGeometry(gameState.graphics.fontHandle, "hi, good game!");
-    std::vector<float> textVertexList;
-    for (int i = 0; i < textData->posMasterList.size(); i++) {
-        textVertexList.push_back(textData->posMasterList[i].x);
-        textVertexList.push_back(textData->posMasterList[i].y);
-        textVertexList.push_back(textData->posMasterList[i].z);
-        textVertexList.push_back(textData->uvMasterList[i].x);
-        textVertexList.push_back(textData->uvMasterList[i].y);
-    }
-    Mesh *textMesh = new Mesh();
-    textMesh->index_count = textData->indicesFlat.size();
-    textMesh->meshVertexArray = createVertexArray();
-    textMesh->meshVertexBuffer = createVertexBuffer(textVertexList.data(), textVertexList.size() * sizeof(float), sizeof(float) * 5);
-    associateVertexBufferWithVertexArray(textMesh->meshVertexBuffer, textMesh->meshVertexArray);
-    textMesh->meshIndexBuffer = createIndexBuffer(textData->indicesFlat.data(), textData->indicesFlat.size() * sizeof(uint32_t));
-    associateIndexBufferWithVertexArray( textMesh->meshIndexBuffer, textMesh->meshVertexArray);
-    describeVertexAttributes(vertexAttributes, textMesh->meshVertexBuffer, gameState.graphics.shaderProgram, textMesh->meshVertexArray);
-    gameState.meshPool["text1"] = textMesh;
-    // End text rendering (huge... TODO improve)
+    gameState.textMesh = createTextMesh(gameState.graphics.fontHandle, "Test text rendering");
+
 
     // Mesh Import and vertex buffer creation etc.
     auto importedMeshes = importMeshFromFile("assets/test.glb");
-
-
-
-
     for (auto im : importedMeshes) {
-        auto mesh = new Mesh();
-        mesh->index_count = im->indicesFlat.size();
-        mesh->meshVertexArray = createVertexArray();
-
-        // Now we assemble our pos|uv vertex layout:
-        std::vector<float> vertexList;
-        for (int i = 0; i < im->posMasterList.size(); i++) {
-            vertexList.push_back(im->posMasterList[i].x);
-            vertexList.push_back(im->posMasterList[i].y);
-            vertexList.push_back(im->posMasterList[i].z);
-            vertexList.push_back(im->uvMasterList[i].x);
-            vertexList.push_back(im->uvMasterList[i].y);
-        }
-        mesh->meshVertexBuffer = createVertexBuffer(vertexList.data(), vertexList.size() * sizeof(float), sizeof(float) * 5);
-        associateVertexBufferWithVertexArray(mesh->meshVertexBuffer, mesh->meshVertexArray);
-        mesh->meshIndexBuffer = createIndexBuffer(im->indicesFlat.data(), im->indicesFlat.size() * sizeof(uint32_t));
-        associateIndexBufferWithVertexArray( mesh->meshIndexBuffer, mesh->meshVertexArray);
+        auto mesh = im->toMesh();
         describeVertexAttributes(vertexAttributes, mesh->meshVertexBuffer, gameState.graphics.shaderProgram, mesh->meshVertexArray);
         gameState.meshPool[im->meshName] = mesh;
+    }
+
+    {
+        auto importedTestMesh = importMeshFromFile("assets/test4.glb")[0]->toMesh();
+        gameState.meshPool["testmesh4"] = importedTestMesh;
+        describeVertexAttributes(vertexAttributes, importedTestMesh->meshVertexBuffer, gameState.graphics.shaderProgram, importedTestMesh->meshVertexArray);
+    }
+
+    // Joint debug mesh import
+    {
+        gameState.graphics.jointDebugMesh =  importMeshFromFile("assets/joint_debug_mesh.glb")[0]->toMesh();
+        describeVertexAttributes(vertexAttributes, gameState.graphics.jointDebugMesh->meshVertexBuffer, gameState.graphics.shaderProgram, gameState.graphics.jointDebugMesh->meshVertexArray);
+
     }
 
     auto heroGo = new GameObject();
@@ -356,8 +426,12 @@ void initGame(GameState& gameState) {
     gameState.graphics.objectTransformBuffer = createConstantBuffer(sizeof(glm::mat4));
     gameState.graphics.cameraTransformBuffer = createConstantBuffer(sizeof(glm::mat4) * 2);
     gameState.perspectiveCamera = new Camera();
-    gameState.perspectiveCamera->view_matrix = glm::lookAtLH(glm::vec3(0, 0, -2), glm::vec3(0, 0, 3), glm::vec3(0, 1, 0));
-    gameState.perspectiveCamera->projection_matrix = glm::perspectiveFovLH_ZO<float>(glm::radians(65.0f), gameState.screen_width,
+    gameState.perspectiveCamera->location = {0, 2, -2};
+    gameState.perspectiveCamera->lookAtTarget = {0, 0, 3};
+    gameState.perspectiveCamera->view_matrix =gameState.perspectiveCamera->updatenAndGetViewMatrix();
+    gameState.perspectiveCamera->projection_matrix = gameState.perspectiveCamera->updateAndGetPerspectiveProjectionMatrix(65,
+        gameState.screen_width, gameState.screen_height, 0.1, 100);
+        glm::perspectiveFovLH_ZO<float>(glm::radians(65.0f), gameState.screen_width,
             gameState.screen_height, 0.1, 100);
 
     gameState.orthoCamera = new Camera();
@@ -374,6 +448,13 @@ void initGame(GameState& gameState) {
     int image_width, image_height;
     auto pixels = load_image("assets/debug_texture.jpg", &image_width, &image_height);
     gameState.graphics.textureHandle = createTexture(image_width, image_height, pixels, 4);
+
+    auto pixelsdj = load_image("assets/debug_joint_texture.png", &image_width, &image_height);
+    gameState.graphics.jointDebugTexture = createTexture(image_width, image_height, pixelsdj, 4);
+
+    pixelsdj = load_image("assets/debug_texture_2.png", &image_width, &image_height);
+    gameState.texturePool["testmesh4_texture"] = createTexture(image_width, image_height, pixelsdj, 4);
+
 }
 
 
@@ -399,7 +480,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
         running = window.process_messages();
 
         do_frame(window, gameState);
-
 
         auto end_tok = window.performance_count();
         frame_time = window.measure_time_in_seconds(start_tok, end_tok);

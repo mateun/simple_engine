@@ -9,8 +9,67 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb_truetype.h>
 
+#include "engine.h"
+#include "engine.h"
+#include "engine.h"
+#include "engine.h"
+#include "glm/ext/matrix_clip_space.hpp"
+#include "glm/ext/matrix_transform.hpp"
+
 static int nextHandleId = 0;
 static std::map<int, Font> fontMap;
+
+Mesh * MeshData::toMesh() {
+    auto mesh = new Mesh;
+    mesh->index_count = indicesFlat.size();
+    mesh->meshVertexArray = createVertexArray();
+
+    // Now we assemble our pos|uv vertex layout:
+    std::vector<float> vertexList;
+    for (int i = 0; i < posMasterList.size(); i++) {
+        vertexList.push_back(posMasterList[i].x);
+        vertexList.push_back(posMasterList[i].y);
+        vertexList.push_back(posMasterList[i].z);
+        vertexList.push_back(uvMasterList[i].x);
+        vertexList.push_back(uvMasterList[i].y);
+    }
+    mesh->meshVertexBuffer = createVertexBuffer(vertexList.data(), vertexList.size() * sizeof(float), sizeof(float) * 5);
+    associateVertexBufferWithVertexArray(mesh->meshVertexBuffer, mesh->meshVertexArray);
+    mesh->meshIndexBuffer = createIndexBuffer(indicesFlat.data(), indicesFlat.size() * sizeof(uint32_t));
+    associateIndexBufferWithVertexArray( mesh->meshIndexBuffer, mesh->meshVertexArray);
+    mesh->skeleton = skeleton;
+
+    return mesh;
+}
+
+glm::vec3 Camera::getForward() {
+    return glm::normalize(lookAtTarget - location);
+}
+
+glm::vec3 Camera::getUp() {
+    return normalize(glm::cross(getRight(), getForward()));
+}
+
+glm::mat4 Camera::updatenAndGetViewMatrix() {
+    view_matrix = glm::lookAtLH(location,lookAtTarget, glm::vec3(0, 1, 0));
+    return view_matrix;
+
+}
+
+glm::mat4 Camera::updateAndGetPerspectiveProjectionMatrix(float fovInDegrees, int width, int height, float nearPlane, float farPlane) {
+    projection_matrix = glm::perspectiveFovLH_ZO<float>(glm::radians(fovInDegrees), width,
+            height, nearPlane, farPlane);
+    return projection_matrix;
+}
+
+
+glm::vec3 Camera::getRight() {
+    return glm::normalize(glm::cross(getForward(), {0, 1, 0}));
+}
+
+void * Camera::matrixBufferPtr() {
+    return &(this->view_matrix);
+}
 
 GraphicsHandle createFont(const std::string& fontName, int fontSize) {
         // Read font file
@@ -26,14 +85,6 @@ GraphicsHandle createFont(const std::string& fontName, int fontSize) {
         unsigned char *ttf_buffer = new unsigned char[size];
         fread(ttf_buffer, 1, size, fp);
         fclose(fp);
-
-        // Image atlasImage = {
-        //     .pixels = new uint8_t[512 * 512],
-        //     .width = 512,
-        //     .height = 512,
-        //     .channels = 1,
-        //
-        // };
 
         // Retrieve font measurements
         stbtt_fontinfo info;
@@ -76,7 +127,6 @@ GraphicsHandle createFont(const std::string& fontName, int fontSize) {
 GraphicsHandle getTextureFromFont(GraphicsHandle fontHandle) {
     auto font = fontMap[fontHandle.id];
     return font.atlasTexture;
-
 }
 
 
@@ -162,3 +212,55 @@ MeshData* renderTextIntoQuadGeometry(GraphicsHandle fontHandle, const std::strin
         return meshData;
 
     }
+
+Mesh * createTextMesh(GraphicsHandle fontHandle, const std::string &text) {
+    auto textData = renderTextIntoQuadGeometry(fontHandle, text);
+    std::vector<float> textVertexList;
+    for (int i = 0; i < textData->posMasterList.size(); i++) {
+        textVertexList.push_back(textData->posMasterList[i].x);
+        textVertexList.push_back(textData->posMasterList[i].y);
+        textVertexList.push_back(textData->posMasterList[i].z);
+        textVertexList.push_back(textData->uvMasterList[i].x);
+        textVertexList.push_back(textData->uvMasterList[i].y);
+    }
+    Mesh *textMesh = new Mesh();
+    textMesh->index_count = textData->indicesFlat.size();
+    textMesh->meshVertexArray = createVertexArray();
+    textMesh->meshVertexBuffer = createVertexBuffer(textVertexList.data(), textVertexList.size() * sizeof(float) * 2, sizeof(float) * 5, BufferUsage::Dynamic);
+    associateVertexBufferWithVertexArray(textMesh->meshVertexBuffer, textMesh->meshVertexArray);
+    textMesh->meshIndexBuffer = createIndexBuffer(textData->indicesFlat.data(), textData->indicesFlat.size() * sizeof(uint32_t) * 2, BufferUsage::Dynamic);
+    associateIndexBufferWithVertexArray( textMesh->meshIndexBuffer, textMesh->meshVertexArray);
+    // Our default 2D attributes, position and texture:
+    std::vector<VertexAttributeDescription> vertexAttributes =  {
+        {"POSITION", 0, 3, DataType::Float, sizeof(float) * 5,
+            0 },
+
+        {"TEXCOORD", 0, 2, DataType::Float, sizeof(float) * 5,
+            sizeof(float) * 3 }
+    };
+    describeVertexAttributes(vertexAttributes, textMesh->meshVertexBuffer, getDefaultTextShaderProgram(), textMesh->meshVertexArray);
+    return textMesh;
+}
+
+void updateText(Mesh &textMesh, GraphicsHandle fontHandle, const std::string &text) {
+    auto oldSize = textMesh.index_count * sizeof(uint32_t) * 2;
+
+    auto textData = renderTextIntoQuadGeometry(fontHandle, text);
+    std::vector<float> textVertexList;
+    for (int i = 0; i < textData->posMasterList.size(); i++) {
+        textVertexList.push_back(textData->posMasterList[i].x);
+        textVertexList.push_back(textData->posMasterList[i].y);
+        textVertexList.push_back(textData->posMasterList[i].z);
+        textVertexList.push_back(textData->uvMasterList[i].x);
+        textVertexList.push_back(textData->uvMasterList[i].y);
+    }
+    auto newSize = textData->indicesFlat.size() * sizeof(uint32_t);
+    if (newSize > oldSize) {
+        exit(1);
+    }
+    textMesh.index_count = textData->indicesFlat.size();
+    updateBuffer(textMesh.meshVertexBuffer, BufferType::Vertex, textVertexList.data(), textVertexList.size() * sizeof(float));
+    updateBuffer(textMesh.meshIndexBuffer, BufferType::Index, textData->indicesFlat.data(), textData->indicesFlat.size() * sizeof(uint32_t));
+
+
+}

@@ -5,6 +5,11 @@
 
 static int timer_token_counter = 0;
 std::map<int, LARGE_INTEGER> timer_tokens;
+static WPARAM last_key_press_ = 0;
+
+WPARAM last_key_press() {
+    return last_key_press_;
+}
 
 TimerToken Win32Window::performance_count() {
 
@@ -30,11 +35,16 @@ int Win32Window::getHeight() {
 
 LRESULT CALLBACK Win32Window::wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
-    case WM_DESTROY:
-        PostQuitMessage(0);
-        return 0;
-    default:
-        return DefWindowProc(hwnd, msg, wParam, lParam);
+        case WM_SYSKEYDOWN:
+        case WM_KEYDOWN:
+            last_key_press_ = wParam;
+            break;
+
+        case WM_DESTROY:
+            PostQuitMessage(0);
+            return 0;
+        default:
+            return DefWindowProc(hwnd, msg, wParam, lParam);
     }
 }
 
@@ -112,6 +122,7 @@ Win32Window::~Win32Window() {
 }
 
 bool Win32Window::process_messages() {
+    last_key_press_ = 0;
     MSG msg;
     while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
         if (msg.message == WM_QUIT)

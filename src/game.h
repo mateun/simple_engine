@@ -9,13 +9,6 @@
 #include "glm/vec3.hpp"
 #include <glm/glm.hpp>
 
-struct Mesh {
-    GraphicsHandle transformBuffer;
-    GraphicsHandle meshVertexBuffer;
-    GraphicsHandle meshIndexBuffer;
-    GraphicsHandle meshVertexArray;
-    uint32_t index_count;
-};
 
 struct GameObject {
 
@@ -43,17 +36,14 @@ struct alignas(16) ObjectTransformBuffer {
     glm::mat4 world_matrix;
 };
 
-struct alignas(16) Camera {
-    glm::mat4 view_matrix;
-    glm::mat4 projection_matrix;
 
-};
 
 
 
 struct GameState {
 
     std::map<std::string, Mesh*> meshPool;
+    std::map<std::string, GraphicsHandle> texturePool;
 
     struct GraphicsState {
         GraphicsHandle shaderProgram;
@@ -65,6 +55,9 @@ struct GameState {
         GraphicsHandle objectTransformBuffer;
         GraphicsHandle fontHandle;
         GraphicsHandle textShaderProgram;
+        GraphicsHandle jointDebugTexture;
+        Mesh* jointDebugMesh = nullptr;
+
     } graphics;
 
     std::vector<GameObject*> gameObjects;
@@ -80,6 +73,7 @@ struct GameState {
     GraphicsHandle textIndexBuffer;
     uint16_t screen_width;
     uint16_t screen_height;
+    Mesh * textMesh = nullptr;      // temporary to hold a test text mesh, for text render tests.
 
 };
 

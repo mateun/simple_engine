@@ -55,7 +55,7 @@ bool isAnimatedJoint(const std::string& name, const aiScene* scene) {
 
 std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
     Assimp::Importer importer;
-    auto scene = importer.ReadFile(fileName, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_LimitBoneWeights | aiProcess_CalcTangentSpace );
+    auto scene = importer.ReadFile(fileName, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_FlipWindingOrder | aiProcess_FlipUVs |  aiProcess_LimitBoneWeights | aiProcess_CalcTangentSpace);
     assert(scene != nullptr);
 
     std::vector<MeshData*> meshImportDatas;
@@ -73,10 +73,10 @@ std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
         for (unsigned int vertexIndex = 0; vertexIndex < mesh->mNumVertices; vertexIndex++) {
             meshImportData->posMasterList.push_back({mesh->mVertices[vertexIndex].x,
                                      mesh->mVertices[vertexIndex].y,
-                                     mesh->mVertices[vertexIndex].z});
+                                     -mesh->mVertices[vertexIndex].z});
             meshImportData->posFlat.push_back(mesh->mVertices[vertexIndex].x);
             meshImportData->posFlat.push_back(mesh->mVertices[vertexIndex].y);
-            meshImportData->posFlat.push_back(mesh->mVertices[vertexIndex].z);
+            meshImportData->posFlat.push_back(-mesh->mVertices[vertexIndex].z);
 
             if (mesh->mTangents) {
                 meshImportData->tangentMasterList.push_back({
@@ -121,13 +121,10 @@ std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
             }
         }
 
+        // /////////////////////////////////////////////////////////////////////////////////////////////////////////////
         // Skeleton import:
         if (mesh->HasBones()) {
-
             std::map<std::string, Joint*> nameToJoint;
-
-
-
             meshImportData->skeleton = new Skeleton();
 
             // Gather all relevant bones, these are either
@@ -146,6 +143,7 @@ std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
                     auto joint = new Joint();
                     joint->name = node->mName.C_Str();
                     nameToJoint[joint->name] = joint;
+
                 }
 
                 for (int i = static_cast<int>(node->mNumChildren) - 1; i >= 0; --i) {
@@ -163,6 +161,7 @@ std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
                             auto parentJoint = new Joint();
                             parentJoint->name = lastParent->mName.C_Str();
                             nameToJoint[parentJoint->name] = parentJoint;
+
                         }
                     }
                 }
@@ -176,6 +175,7 @@ std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
             for (unsigned int b = 0; b < mesh->mNumBones; b++) {
                 auto bone = mesh->mBones[b];
                 auto joint = new Joint();
+                meshImportData->skeleton->joints.push_back(joint);
                 auto node = scene->mRootNode->FindNode(bone->mName.C_Str());
                 joint->name = bone->mName.C_Str();
                 nameToJoint[joint->name] = joint;

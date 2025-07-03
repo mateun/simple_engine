@@ -25,7 +25,11 @@ static ID3D11RenderTargetView *rtv;
 static ID3D11Texture2D *depthStencilBuffer;
 static ID3D11DepthStencilView *depthStencilView;
 static ID3D11DepthStencilState *m_DepthStencilState;
+static ID3D11DepthStencilState * m_depthStencilStateNoDepth;
 static ID3D11SamplerState *defaultSamplerState;
+ID3D11RasterizerState* rasterStateSolid = nullptr;
+ID3D11RasterizerState* rasterStateWireframe = nullptr;
+static GraphicsHandle defaultTextShaderProgram = {};
 
 struct BufferWrapper {
     ID3D11Buffer* buffer;
@@ -70,6 +74,8 @@ static std::map<int, ID3D11Buffer*> indexBufferMap;
 static std::map<int, ID3D11InputLayout*> inputLayoutMap;
 static std::map<int, DX11VertexArray*> vertexArrayMap;
 static std::map<int, DX11Texture> textureMap;
+
+
 
 
 void initGraphics(Win32Window& window, bool msaa, int msaa_samples) {
@@ -213,9 +219,19 @@ void initGraphics(Win32Window& window, bool msaa, int msaa_samples) {
 
     result = device->CreateDepthStencilState(&depthStencilDesc, &m_DepthStencilState);
     if (FAILED(result)) {
-        OutputDebugString(L"failed to set depth stencil state\n");
+        OutputDebugString(L"failed to create depth stencil state\n");
         exit(1);
     }
+
+    depthStencilDesc.DepthEnable = FALSE;
+    depthStencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+    depthStencilDesc.DepthFunc = D3D11_COMPARISON_LESS;
+    result = device->CreateDepthStencilState(&depthStencilDesc, &m_depthStencilStateNoDepth);
+    if (FAILED(result)) {
+        OutputDebugString(L"failed to create depth stencil state\n");
+        exit(1);
+    }
+
     ctx->OMSetDepthStencilState(m_DepthStencilState, 0);
 
     D3D11_RASTERIZER_DESC rsDesc = {};
@@ -223,10 +239,13 @@ void initGraphics(Win32Window& window, bool msaa, int msaa_samples) {
     rsDesc.CullMode = D3D11_CULL_BACK;
     rsDesc.FrontCounterClockwise = FALSE;
     rsDesc.DepthClipEnable = TRUE;
+    device->CreateRasterizerState(&rsDesc, &rasterStateSolid);
 
-    ID3D11RasterizerState* rasterState = nullptr;
-    device->CreateRasterizerState(&rsDesc, &rasterState);
-    ctx->RSSetState(rasterState);
+    rsDesc.FillMode = D3D11_FILL_WIREFRAME;
+    device->CreateRasterizerState(&rsDesc, &rasterStateWireframe);
+    ctx->RSSetState(rasterStateSolid);
+
+
 
     D3D11_VIEWPORT vp = {};
     vp.TopLeftX = 0;
@@ -392,12 +411,53 @@ GraphicsHandle createShaderProgram(const std::string& vsCode, const std::string&
     return handle;
 
 }
-GraphicsHandle createVertexBuffer(void* data, int size, uint32_t stride) {
+
+void updateBuffer(GraphicsHandle bufferHandle, BufferType bufferType, void* data, uint32_t size_in_bytes) {
+    ID3D11Buffer* buffer = nullptr;
+    if (bufferType == BufferType::Vertex) {
+        buffer = vertexBufferMap[bufferHandle.id].buffer;
+    } else if (bufferType == BufferType::Index) {
+        buffer = indexBufferMap[bufferHandle.id];
+    }
+
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    ctx->Map(buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+    memcpy(mapped.pData, data, size_in_bytes);
+    ctx->Unmap(buffer, 0);
+
+}
+
+void setFillMode(FillMode mode) {
+    if (mode == FillMode::Wireframe) {
+        ctx->RSSetState(rasterStateWireframe);
+    }
+    else if (mode == FillMode::Solid) {
+        ctx->RSSetState(rasterStateSolid);
+    }
+}
+
+void setDepthTesting(bool on) {
+    if (on) {
+        ctx->OMSetDepthStencilState(m_DepthStencilState, 0);
+    } else {
+        ctx->OMSetDepthStencilState(m_depthStencilStateNoDepth, 0);
+    }
+}
+
+D3D11_USAGE dx11UsageFromBufferUsage(BufferUsage bufferUsage) {
+    switch (bufferUsage) {
+        case BufferUsage::Static: return D3D11_USAGE_DEFAULT;
+        case BufferUsage::Dynamic: return D3D11_USAGE_DYNAMIC;
+        default: return D3D11_USAGE_DEFAULT;
+    }
+}
+
+GraphicsHandle createVertexBuffer(void* data, int size, uint32_t stride, BufferUsage bufferUsage) {
     D3D11_BUFFER_DESC bd = {};
-    bd.Usage = D3D11_USAGE_DEFAULT;
+    bd.Usage = dx11UsageFromBufferUsage(bufferUsage);
     bd.ByteWidth = size;
     bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    bd.CPUAccessFlags = 0;
+    bd.CPUAccessFlags = bufferUsage == BufferUsage::Dynamic ? D3D11_CPU_ACCESS_WRITE : 0;
 
     D3D11_SUBRESOURCE_DATA initData = {};
     initData.pSysMem = data;
@@ -452,6 +512,8 @@ void renderGeometry(PrimitiveType primitiveType) {
     ctx->IASetPrimitiveTopology(getPrimitiveTopology(primitiveType));
     ctx->Draw(3, 0);
 }
+
+
 void clear(float r, float g, float b, float a) {
     ID3D11RenderTargetView* rtvs[1] = { rtv };
     ctx->OMSetRenderTargets(1, rtvs, depthStencilView);
@@ -490,12 +552,12 @@ void uploadConstantBufferData(GraphicsHandle bufferHandle, void *data, uint32_t 
 }
 
 
-GraphicsHandle createIndexBuffer(void* data, int size) {
+GraphicsHandle createIndexBuffer(void* data, int size, BufferUsage bufferUsage) {
     D3D11_BUFFER_DESC bd = {};
-    bd.Usage = D3D11_USAGE_DEFAULT;
+    bd.Usage = dx11UsageFromBufferUsage(bufferUsage);
     bd.ByteWidth = size;
     bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
-    bd.CPUAccessFlags = 0;
+    bd.CPUAccessFlags = bufferUsage == BufferUsage::Dynamic ? D3D11_CPU_ACCESS_WRITE : 0;
 
     D3D11_SUBRESOURCE_DATA initData = {};
     initData.pSysMem = data;
@@ -598,6 +660,72 @@ void bindVertexArray(GraphicsHandle vaoHandle) {
         ctx->IASetIndexBuffer(va->indexBuffer, DXGI_FORMAT_R32_UINT, 0);
     }
 }
+
+
+
+
+GraphicsHandle getDefaultTextShaderProgram() {
+
+    static std::string text_vshader_hlsl = R"(
+        struct VOutput
+        {
+            float4 pos : SV_POSITION;
+            float2 uv : TEXCOORD0;
+        };
+
+        // Per object transformation (movement, rotation, scale)
+        cbuffer ObjectTransformBuffer : register(b0) {
+            row_major matrix world_matrix;
+        };
+
+        // PerFrame
+        cbuffer CameraBuffer : register(b1) {
+            row_major float4x4 view_matrix;
+            row_major float4x4 projection_matrix;
+
+        };
+
+
+        VOutput main(float4 pos : POSITION, float2 uv : TEXCOORD0) {
+            VOutput output;
+
+            output.pos = mul(pos, world_matrix);
+            output.pos = mul(output.pos, view_matrix);
+            output.pos = mul(output.pos, projection_matrix);
+            output.uv = uv;
+
+            return output;
+        }
+    )";
+
+    static std::string text_fs_hlsl = R"(
+        struct VOutput
+        {
+            float4 pos: SV_POSITION;
+            float2 uv: TEXCOORD0;
+        } input;
+
+        Texture2D imageTexture;
+        SamplerState samplerState;
+
+        float4 main(VOutput input) : SV_TARGET
+        {
+            float r = imageTexture.Sample(samplerState, input.uv).r;
+            return float4(1, 1 , 1, r);
+        };
+    )";
+
+    static bool firstTime = true;
+    if (firstTime) {
+        firstTime = false;
+        defaultTextShaderProgram = createShaderProgram(text_vshader_hlsl, text_fs_hlsl);
+    } else {
+        return defaultTextShaderProgram;
+    }
+
+}
+
+
 
 
 

@@ -11,6 +11,8 @@
 #include <Win32Window.h>
 #include <glm/glm.hpp>
 
+struct Mesh;
+
 struct GraphicsHandle {
     int id;
 };
@@ -85,6 +87,8 @@ struct MeshData {
 
     // Optional
     Skeleton * skeleton = nullptr;
+
+    Mesh* toMesh();
 };
 
 struct Font {
@@ -96,15 +100,74 @@ struct Font {
 
 };
 
+enum class BufferUsage {
+    Static,
+    Dynamic,
+
+};
+
+enum class BufferType {
+    Vertex,
+    Index,
+    Constant,
+};
+
+struct Mesh {
+    GraphicsHandle transformBuffer;
+    GraphicsHandle meshVertexBuffer;
+    GraphicsHandle meshIndexBuffer;
+    GraphicsHandle meshVertexArray;
+    uint32_t index_count;
+    Skeleton* skeleton = nullptr;
+};
+
+enum class FillMode {
+    Solid,
+    Wireframe,
+};
+
+struct alignas(16) Camera {
+    glm::vec3 getForward();
+    glm::vec3 getRight();
+    glm::vec3 getUp();
+    glm::mat4 updatenAndGetViewMatrix();
+    glm::mat4 updateAndGetPerspectiveProjectionMatrix(float fovInDegrees, int width, int height, float nearPlane, float farPlane);
+    glm::mat4 getOrthoProjectionMatrix();
+
+    glm::mat4 view_matrix;
+    glm::mat4 projection_matrix;
+    glm::vec3 location;
+    glm::vec3 lookAtTarget;
+    glm::vec3 _initialForward;
+
+    glm::vec3 followOffset;
+    glm::vec3 followDirection;
+    float nearPlane = 0.1f;
+    float farPlane = 500.0f;
+
+    // GLuint positionBuffer = 0;
+    // GLuint shadowPositionBuffer = 0;
+    // Shader* frustumShader = nullptr;
+    // CameraType type_;
+
+    float left_ = -1;
+    float right_= -1;
+    float bottom_ = -1;
+    float top_ = -1;
+    void * matrixBufferPtr();
+};
+
+
 GraphicsHandle createFont(const std::string& fontName, int fontSize);
 GraphicsHandle createTexture(int width, int height, uint8_t* pixels, uint8_t num_channels);
 GraphicsHandle createShader(const std::string& code, ShaderType type);
 GraphicsHandle createShaderProgram(const std::string& vsCode, const std::string& fsCode);
-GraphicsHandle createVertexBuffer(void* data, int size, uint32_t stride=0);
+GraphicsHandle createVertexBuffer(void* data, int size, uint32_t stride=0, BufferUsage usage = BufferUsage::Static);
 GraphicsHandle createConstantBuffer(uint32_t size);
-GraphicsHandle createIndexBuffer(void* data, int size);
+GraphicsHandle createIndexBuffer(void* data, int size, BufferUsage usage = BufferUsage::Static);
 GraphicsHandle createVertexArray();
 GraphicsHandle getTextureFromFont(GraphicsHandle fontHandle);
+GraphicsHandle getDefaultTextShaderProgram();
 void initGraphics(Win32Window& window, bool msaa, int msaa_samples);
 void clear(float r, float g, float b, float a);
 void describeVertexAttributes(std::vector<VertexAttributeDescription>& attributeDescriptions,  GraphicsHandle bufferHandle, GraphicsHandle shaderProgramHandle, GraphicsHandle vertexArrayHandle);
@@ -116,11 +179,14 @@ void bindShaderProgram(GraphicsHandle programHandle);
 void bindTexture(GraphicsHandle textureHandle, uint8_t slot);
 void uploadConstantBufferData(GraphicsHandle bufferHandle, void* data, uint32_t size_in_bytes, uint32_t bufferSlot);
 void renderGeometry(PrimitiveType primitiveType);
+void updateText(Mesh& textMesh, GraphicsHandle fontHandle, const std::string& text);
+void updateBuffer(GraphicsHandle bufferHandle, BufferType bufferType, void* data, uint32_t size_in_bytes);
+void setFillMode(FillMode mode);
+void setDepthTesting(bool on);
+Mesh* createTextMesh(GraphicsHandle fontHandle, const std::string& text);
 MeshData* renderTextIntoQuadGeometry(GraphicsHandle fontHandle, const std::string& text);
-
 void renderGeometryIndexed(PrimitiveType primitiveType, int count, int startIndex);
 void present();
-
 std::vector<MeshData*> importMeshFromFile(const std::string& fileName);
 
 
@@ -134,8 +200,8 @@ void drawLine(Win32Window& window, int x1, int y1, int x2, int y2, int color);
 void gl_clear(float r, float g, float b, float a);
 void gl_init(HWND hwnd, bool msaa, int msaa_samples);
 
-// This definition turns on implementation in general.
-// This should be defined in one single CPP file only!
+
+bool isKeyDown(int key);
 
 #include <Windows.h>
 
