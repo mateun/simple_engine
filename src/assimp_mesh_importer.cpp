@@ -90,7 +90,7 @@ std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
                     std::cerr << "failed to load embedded texture" << std::endl;
                     // TODO error handling
                 } else {
-                    meshImportData->diffuseTexture = createTexture(w, h, pixels, channels);
+                    meshImportData->diffuseTexture = createTexture(w, h, pixels, 4);
                     stbi_image_free(pixels);
                 }
             }
