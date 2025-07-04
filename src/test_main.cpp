@@ -94,6 +94,7 @@ void update_camera(GameState& gameState) {
 
 void do_frame(const Win32Window & window, GameState& gameState) {
 
+    //setViewport(100, 100, 700, 500);
     update_camera(gameState);
 
     setDepthTesting(true);
@@ -105,6 +106,8 @@ void do_frame(const Win32Window & window, GameState& gameState) {
 
     // Render some test quads
     {
+        bindFrameBuffer(gameState.graphics.frameBufferSceneTree, 0, 0, 600, 400);
+        clearFrameBuffer(gameState.graphics.frameBufferSceneTree, 0, .25, 0, 1);
         bindVertexArray(gameState.graphics.vertexArray);
         bindShaderProgram(gameState.graphics.shaderProgram);
         bindTexture(gameState.graphics.textureHandle, 0);
@@ -123,6 +126,33 @@ void do_frame(const Win32Window & window, GameState& gameState) {
         // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
         uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+
+        // Render the framebuffer as a quad somewhere on the screen:
+        bindDefaultBackbuffer(0, 0, 800, 600);
+        bindFrameBufferTexture(gameState.graphics.frameBufferSceneTree, 0);
+        uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.orthoCamera, sizeof(Camera), 1);
+        scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(200, 400, 1));
+        rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(100, 400-64, 2)) * rotationMatrix * scaleMatrix;
+        uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+
+
+
+    }
+
+    {
+        // Render topmenu
+        bindFrameBuffer(gameState.graphics.frameBufferTopMenu, 0, 0, 800, 64);
+        clearFrameBuffer(gameState.graphics.frameBufferTopMenu, 0.2, .25, 0, 1);
+        bindDefaultBackbuffer(0, 0, 800, 600);
+        bindFrameBufferTexture(gameState.graphics.frameBufferTopMenu, 0);
+        uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.orthoCamera, sizeof(Camera), 1);
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(800, 64, 1));
+        auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(400, 600-32, 1.5)) * rotationMatrix * scaleMatrix;
+        uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
     }
 
     // Render each game object
@@ -130,6 +160,8 @@ void do_frame(const Win32Window & window, GameState& gameState) {
     animationTime += frame_time;
     //animationTime = 0.0f;
 
+    // Switch again to perspective camera
+    uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.perspectiveCamera->matrixBufferPtr(), sizeof(glm::mat4) * 2, 1);
     for (auto go : gameState.gameObjects) {
         for (auto mesh : go->renderData.meshes) {
             bindVertexArray(mesh->meshVertexArray);
@@ -270,9 +302,8 @@ void do_frame(const Win32Window & window, GameState& gameState) {
     uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.orthoCamera, sizeof(Camera), 1);
 
     auto textMesh = gameState.textMesh;
-    static int frame = 0;
-    frame++;
-    updateText(*textMesh, gameState.graphics.fontHandle, "FTus: " + std::to_string(frame_time * 1000 * 1000));
+
+    updateText(*textMesh, gameState.graphics.fontHandle, "FTus: " + std::to_string(gameState.frameTimer->getAverage() * 1000 * 1000));
     bindVertexArray(textMesh->meshVertexArray);
     bindTexture(getTextureFromFont(gameState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
     auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
@@ -514,13 +545,19 @@ void initGame(GameState& gameState) {
                     sizeof(float) * 9 },
     };
 
-    // Render a fixed text:
+    // Prepare text render meshes:
     gameState.graphics.fontHandle = createFont("assets/consola.ttf", 16);
     gameState.textMesh = createTextMesh(gameState.graphics.fontHandle, "Test text rendering");
 
 
+    // Prepare an offscreen framebuffer for the 3d scene:
+    gameState.graphics.frameBuffer3DPanel = createFrameBuffer(600, 400, true);
+    gameState.graphics.frameBufferTopMenu = createFrameBuffer(800, 64, true);
+    gameState.graphics.frameBufferSceneTree = createFrameBuffer(200, 500, true);
+
+
     // Mesh Import and vertex buffer creation etc.
-    auto importedMeshes = importMeshFromFile("assets/test.glb");
+    auto importedMeshes = importMeshFromFile("assets/knight.glb");
     for (auto im : importedMeshes) {
         auto mesh = im->toMesh();
         // Now we decide which attributes to link with:
@@ -610,6 +647,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
     gameState.screen_height = height;
     initGame(gameState);
 
+    gameState.frameTimer = new FrameTimer(600);;
+
     bool running = true;
     while (running) {
         auto start_tok = window.performance_count();
@@ -619,6 +658,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
 
         auto end_tok = window.performance_count();
         frame_time = window.measure_time_in_seconds(start_tok, end_tok);
+        gameState.frameTimer->addFrameTime(frame_time);
 
 #ifdef _PERF_MEASURE
         std::cout << "frametime: " << frame_time << std::endl;

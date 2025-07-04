@@ -57,6 +57,10 @@ struct GameState {
         GraphicsHandle objectTransformBuffer;
         GraphicsHandle skinningMatricesCBuffer;
         GraphicsHandle fontHandle;
+        GraphicsHandle frameBuffer3DPanel;
+        GraphicsHandle frameBufferTopMenu;
+        GraphicsHandle frameBufferAssetPanel;
+        GraphicsHandle frameBufferSceneTree;
 
         GraphicsHandle jointDebugTexture;
         Mesh* jointDebugMesh = nullptr;
@@ -77,7 +81,7 @@ struct GameState {
     uint16_t screen_width;
     uint16_t screen_height;
     Mesh * textMesh = nullptr;      // temporary to hold a test text mesh, for text render tests.
-
+    FrameTimer* frameTimer = nullptr;
 };
 
 #endif //GAME_H

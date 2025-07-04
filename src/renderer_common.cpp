@@ -174,6 +174,25 @@ void * Camera::matrixBufferPtr() {
     return &(this->view_matrix);
 }
 
+FrameTimer::FrameTimer(size_t maxSamples) : maxSamples_(maxSamples){
+
+}
+
+void FrameTimer::addFrameTime(float dt) {
+    frameTimes.push_back(dt);
+    sum += dt;
+
+    if (frameTimes.size() > maxSamples_) {
+        sum -= frameTimes.front();
+        frameTimes.pop_front();
+    }
+}
+
+float FrameTimer::getAverage() const {
+    if (frameTimes.empty()) return 0.0f;
+    return sum / frameTimes.size();
+}
+
 GraphicsHandle createFont(const std::string& fontName, int fontSize) {
         // Read font file
         FILE *fp = fopen(fontName.c_str(), "rb");

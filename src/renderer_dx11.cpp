@@ -62,6 +62,18 @@ struct DX11Texture {
     ID3D11DepthStencilView* dsv;
 };
 
+struct OffscreenRenderTarget {
+    ID3D11Texture2D* texture = nullptr;
+    ID3D11RenderTargetView* rtv = nullptr;
+    ID3D11ShaderResourceView* srv = nullptr;
+    ID3D11Texture2D* depthTexture = nullptr;
+    ID3D11DepthStencilView* dsv = nullptr;
+    int width = 0;
+    int height = 0;
+
+    void release(); // cleanup
+};
+
 
 
 static int nextHandleId = 0;
@@ -74,6 +86,7 @@ static std::map<int, ID3D11Buffer*> indexBufferMap;
 static std::map<int, ID3D11InputLayout*> inputLayoutMap;
 static std::map<int, DX11VertexArray*> vertexArrayMap;
 static std::map<int, DX11Texture> textureMap;
+static std::map<int, OffscreenRenderTarget> frameBufferMap;
 
 
 
@@ -445,6 +458,17 @@ void setDepthTesting(bool on) {
     }
 }
 
+void setViewport(int originX, int originY, int width, int height) {
+    D3D11_VIEWPORT vp = {};
+    vp.TopLeftX = originX;
+    vp.TopLeftY = originY;
+    vp.Width = (FLOAT) width;
+    vp.Height = (FLOAT)height;
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    ctx->RSSetViewports(1, &vp);
+}
+
 D3D11_USAGE dx11UsageFromBufferUsage(BufferUsage bufferUsage) {
     switch (bufferUsage) {
         case BufferUsage::Static: return D3D11_USAGE_DEFAULT;
@@ -514,6 +538,14 @@ void renderGeometry(PrimitiveType primitiveType) {
     ctx->Draw(3, 0);
 }
 
+void clearFrameBuffer(GraphicsHandle fbHandle, float r, float g, float b, float a) {
+    auto fb = frameBufferMap[fbHandle.id];
+    //ctx->OMSetRenderTargets(1, &fb.rtv, fb.dsv);
+    float color[] = {r, g, b, a};
+    ctx->ClearRenderTargetView(fb.rtv, color);
+    ctx->ClearDepthStencilView(fb.dsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+
+}
 
 void clear(float r, float g, float b, float a) {
     ID3D11RenderTargetView* rtvs[1] = { rtv };
@@ -521,7 +553,6 @@ void clear(float r, float g, float b, float a) {
     //ctx->OMSetRenderTargets(1, rtvs, nullptr);
     float color[] = {r, g, b, a};
     ctx->ClearRenderTargetView(rtv, color);
-
     // clear our depth target as well
     ctx->ClearDepthStencilView(depthStencilView, D3D11_CLEAR_DEPTH, 1, 0);
 }
@@ -538,6 +569,11 @@ void bindTexture(GraphicsHandle textureHandle, uint8_t slot) {
     auto texture = textureMap[textureHandle.id];
     ctx->PSSetShaderResources(slot, 1, &texture.srv);
     ctx->PSSetSamplers(slot, 1, &defaultSamplerState);
+}
+
+void bindDefaultBackbuffer(int originX, int originY, int width, int height) {
+    ctx->OMSetRenderTargets(1, &rtv, depthStencilView);
+    setViewport(originX, originY, width, height);
 }
 
 void uploadConstantBufferData(GraphicsHandle bufferHandle, void *data, uint32_t size_in_bytes,  uint32_t bufferSlot) {
@@ -726,8 +762,74 @@ GraphicsHandle getDefaultTextShaderProgram() {
 
 }
 
+void bindFrameBuffer(GraphicsHandle frameBufferHandle, int viewportOriginX, int viewportOriginY, int viewportWidth, int viewportHeight) {
+    auto fb = frameBufferMap[frameBufferHandle.id];
+    ctx->OMSetRenderTargets(1, &fb.rtv, fb.dsv);
+    setViewport(viewportOriginX, viewportOriginY, viewportWidth, viewportHeight);
+
+}
+
+void bindFrameBufferTexture(GraphicsHandle frameBufferHandle, int slot) {
+    auto fb = frameBufferMap[frameBufferHandle.id];
+
+    ID3D11ShaderResourceView* nullSRV[1] = { nullptr };
+    ctx->PSSetShaderResources(slot, 1, nullSRV);
+
+    ctx->PSSetShaderResources(slot, 1, &fb.srv);
+}
 
 
+
+GraphicsHandle createFrameBuffer(int width, int height, bool includeDepthBuffer) {
+    OffscreenRenderTarget rt;
+    rt.width = width;
+    rt.height = height;
+
+    D3D11_TEXTURE2D_DESC desc = {};
+    desc.Width = width;
+    desc.Height = height;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+
+    device->CreateTexture2D(&desc, nullptr, &rt.texture);
+    device->CreateRenderTargetView(rt.texture, nullptr, &rt.rtv);
+    device->CreateShaderResourceView(rt.texture, nullptr, &rt.srv);
+
+    if (includeDepthBuffer) {
+        D3D11_TEXTURE2D_DESC depthDesc = {};
+        depthDesc.Width = width;
+        depthDesc.Height = height;
+        depthDesc.MipLevels = 1;
+        depthDesc.ArraySize = 1;
+        depthDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+        depthDesc.SampleDesc.Count = 1;
+        depthDesc.Usage = D3D11_USAGE_DEFAULT;
+        depthDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+
+        auto result = device->CreateTexture2D(&depthDesc, nullptr, &rt.depthTexture);
+        if (FAILED(result)) {
+            exit(1);
+        }
+
+        D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+        dsvDesc.Format = depthDesc.Format;
+        dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+        dsvDesc.Texture2D.MipSlice = 0;
+        result = device->CreateDepthStencilView(rt.depthTexture, &dsvDesc, &rt.dsv);
+        if (FAILED(result)) {
+            exit(1);
+        }
+    }
+
+    GraphicsHandle handle = {nextHandleId++};
+    frameBufferMap[handle.id] = rt;
+    return handle;
+
+}
 
 
 #endif

@@ -7,6 +7,7 @@
 #ifndef GRAPHICS_H
 #define GRAPHICS_H
 
+#include <deque>
 #include <stb_truetype.h>
 #include <vector>
 #include <map>
@@ -219,6 +220,26 @@ struct alignas(16) Camera {
 };
 
 
+
+/**
+ * This class calculates the average frametime out of a number of samples
+ * to avoid too much jitter in the different times, which may vary frame by frame if uncapped.
+ */
+class FrameTimer {
+
+public:
+    FrameTimer(size_t maxSamples);
+    void addFrameTime(float dt);
+
+    float getAverage() const;
+
+private:
+    std::deque<float> frameTimes;
+    const size_t maxSamples_ = 60;
+    float sum = 0.0f;
+};
+
+
 GraphicsHandle createFont(const std::string& fontName, int fontSize);
 GraphicsHandle createTexture(int width, int height, uint8_t* pixels, uint8_t num_channels);
 GraphicsHandle createShader(const std::string& code, ShaderType type);
@@ -229,11 +250,17 @@ GraphicsHandle createIndexBuffer(void* data, int size, BufferUsage usage = Buffe
 GraphicsHandle createVertexArray();
 GraphicsHandle getTextureFromFont(GraphicsHandle fontHandle);
 GraphicsHandle getDefaultTextShaderProgram();
+GraphicsHandle createFrameBuffer(int width, int height, bool includeDepthBuffer = false);
 StartEndKeyFrame getStartEndKeyFrameForTime(float time, Animation* animation, KeyFrameType type, std::string jointName);
 glm::vec3 aiToGLM(aiVector3D);
 glm::quat aiToGLM(aiQuaternion aiQuat);
+Mesh* createTextMesh(GraphicsHandle fontHandle, const std::string& text);
+MeshData* renderTextIntoQuadGeometry(GraphicsHandle fontHandle, const std::string& text);
+std::vector<MeshData*> importMeshFromFile(const std::string& fileName);
+
 void initGraphics(Win32Window& window, bool msaa, int msaa_samples);
 void clear(float r, float g, float b, float a);
+void clearFrameBuffer(GraphicsHandle fbHandle, float r, float g, float b, float a);
 void describeVertexAttributes(std::vector<VertexAttributeDescription>& attributeDescriptions,  GraphicsHandle bufferHandle, GraphicsHandle shaderProgramHandle, GraphicsHandle vertexArrayHandle);
 void associateVertexBufferWithVertexArray(GraphicsHandle vertexBuffer, GraphicsHandle vertexArray);
 void associateIndexBufferWithVertexArray(GraphicsHandle indexBuffer, GraphicsHandle vertexArray);
@@ -241,17 +268,19 @@ void bindVertexBuffer(GraphicsHandle bufferHandle);
 void bindVertexArray(GraphicsHandle vaoHandle);
 void bindShaderProgram(GraphicsHandle programHandle);
 void bindTexture(GraphicsHandle textureHandle, uint8_t slot);
+void bindDefaultBackbuffer(int originX, int originY, int width, int height);
+void bindFrameBuffer(GraphicsHandle fbHandle, int viewportOriginX, int viewportOriginY, int viewportWidth, int viewportHeight);
+void bindFrameBufferTexture(GraphicsHandle frameBufferHandle, int slot);
 void uploadConstantBufferData(GraphicsHandle bufferHandle, void* data, uint32_t size_in_bytes, uint32_t bufferSlot);
 void renderGeometry(PrimitiveType primitiveType);
 void updateText(Mesh& textMesh, GraphicsHandle fontHandle, const std::string& text);
 void updateBuffer(GraphicsHandle bufferHandle, BufferType bufferType, void* data, uint32_t size_in_bytes);
 void setFillMode(FillMode mode);
 void setDepthTesting(bool on);
-Mesh* createTextMesh(GraphicsHandle fontHandle, const std::string& text);
-MeshData* renderTextIntoQuadGeometry(GraphicsHandle fontHandle, const std::string& text);
+void setViewport(int originX, int originY, int width, int height);
 void renderGeometryIndexed(PrimitiveType primitiveType, int count, int startIndex);
 void present();
-std::vector<MeshData*> importMeshFromFile(const std::string& fileName);
+
 
 
 // TODO is this really part of the common graphics interface?!
