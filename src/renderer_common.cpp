@@ -26,53 +26,87 @@ Mesh * MeshData::toMesh() {
     auto mesh = new Mesh;
     mesh->index_count = indicesFlat.size();
     mesh->meshVertexArray = createVertexArray();
+    mesh->materialName = materialName;
+    mesh->diffuseTexturePath = diffuseTexturePath;
+    mesh->diffuseTexture = diffuseTexture;
+    mesh->normalMapPath = normalMapPath;
 
+    // Decide on the vertex layout.
+    // For skeletal meshes with animations we have to also add blendweights
+    // and blend indices.
     // Now we assemble our pos|uv vertex layout:
     std::vector<float> vertexList;
-    for (int i = 0; i < posMasterList.size(); i++) {
-        vertexList.push_back(posMasterList[i].x);
-        vertexList.push_back(posMasterList[i].y);
-        vertexList.push_back(posMasterList[i].z);
-        vertexList.push_back(uvMasterList[i].x);
-        vertexList.push_back(uvMasterList[i].y);
+    if (skeleton != nullptr && skeleton->animations.size() > 0) {
+        // The "animated one", with extra blend weights and blend  indices.
+        for (int i = 0; i < posMasterList.size(); i++) {
+            vertexList.push_back(posMasterList[i].x);
+            vertexList.push_back(posMasterList[i].y);
+            vertexList.push_back(posMasterList[i].z);
+
+            vertexList.push_back(uvMasterList[i].x);
+            vertexList.push_back(uvMasterList[i].y);
+
+            vertexList.push_back(jointWeights[i].x);
+            vertexList.push_back(jointWeights[i].y);
+            vertexList.push_back(jointWeights[i].z);
+            vertexList.push_back(jointWeights[i].w);
+
+            vertexList.push_back(jointIndices[i].x);
+            vertexList.push_back(jointIndices[i].y);
+            vertexList.push_back(jointIndices[i].z);
+            vertexList.push_back(jointIndices[i].w);
+        }
+    } else {
+        // "default" layout, for now it is only position and uvs.
+        for (int i = 0; i < posMasterList.size(); i++) {
+            vertexList.push_back(posMasterList[i].x);
+            vertexList.push_back(posMasterList[i].y);
+            vertexList.push_back(posMasterList[i].z);
+            vertexList.push_back(uvMasterList[i].x);
+            vertexList.push_back(uvMasterList[i].y);
+        }
     }
-    mesh->meshVertexBuffer = createVertexBuffer(vertexList.data(), vertexList.size() * sizeof(float), sizeof(float) * 5);
+
+    // Also need different vertex buffer in case of skeletal animations:
+    if (skeleton != nullptr && skeleton->animations.size() > 0) {
+        mesh->meshVertexBuffer = createVertexBuffer(vertexList.data(), vertexList.size() * sizeof(float), sizeof(float) * 13, BufferUsage::Static );
+    } else {
+        mesh->meshVertexBuffer = createVertexBuffer(vertexList.data(), vertexList.size() * sizeof(float), sizeof(float) * 5);
+    }
+
     associateVertexBufferWithVertexArray(mesh->meshVertexBuffer, mesh->meshVertexArray);
     mesh->meshIndexBuffer = createIndexBuffer(indicesFlat.data(), indicesFlat.size() * sizeof(uint32_t));
     associateIndexBufferWithVertexArray( mesh->meshIndexBuffer, mesh->meshVertexArray);
     mesh->skeleton = skeleton;
+    mesh->positions = posMasterList;
+    mesh->uvs = uvMasterList;
+    mesh->jointIndices = jointIndices;
+    mesh->jointWeights = jointWeights;
+    mesh->name = meshName;
     return mesh;
 }
 
 
 StartEndKeyFrame getStartEndKeyFrameForTime(float time, Animation* animation, KeyFrameType type, std::string jointName) {
     auto jointAnimationTrack = animation->jointAnimationTracks[jointName];
+    auto tps = animation->ticksPerSecond;
 
-    auto timeForType = [] (KeyFrameType type, void* kf ) -> float {
-        if (type == KeyFrameType::Translation || type == KeyFrameType::Scale) {
-            return ((aiVectorKey*) kf)->mTime;
-        }
-        if (type == KeyFrameType::Rotation) {
-            return ((aiQuatKey*) kf)->mTime;
-        }
-    };
-
-    auto extractPositions = [jointAnimationTrack, time] () -> std::pair<aiVectorKey, aiVectorKey> {
+    auto extractPositions = [jointAnimationTrack, time, tps] () -> std::pair<aiVectorKey, aiVectorKey> {
         for (int i = 0; i < jointAnimationTrack.positionKeys.size()-1; i++) {
             aiVectorKey kf = jointAnimationTrack.positionKeys[i];
             aiVectorKey kfPlusOne = jointAnimationTrack.positionKeys[i +1];
-            if (time >= kf.mTime && time < kfPlusOne.mTime) {
+            if (time >= (kf.mTime/ tps )  && time < (kfPlusOne.mTime / tps)) {
                 return std::make_pair(kf, kfPlusOne);
             }
 
         }
     };
 
-    auto extractRotations = [jointAnimationTrack, time] () -> std::pair<aiQuatKey, aiQuatKey> {
+    auto extractRotations = [jointAnimationTrack, time, tps] () -> std::pair<aiQuatKey, aiQuatKey> {
         for (int i = 0; i < jointAnimationTrack.rotationKeys.size()-1; i++) {
             aiQuatKey kf = jointAnimationTrack.rotationKeys[i];
             aiQuatKey kfPlusOne = jointAnimationTrack.rotationKeys[i +1];
-            if (time >= kf.mTime && time < kfPlusOne.mTime) {
+            if (time >= (kf.mTime / tps) && time < (kfPlusOne.mTime / tps)) {
                 return std::make_pair(kf, kfPlusOne);
             }
 
@@ -80,11 +114,11 @@ StartEndKeyFrame getStartEndKeyFrameForTime(float time, Animation* animation, Ke
     };
 
 
-    auto extractScalings = [jointAnimationTrack, time] () -> std::pair<aiVectorKey, aiVectorKey> {
+    auto extractScalings = [jointAnimationTrack, time, tps] () -> std::pair<aiVectorKey, aiVectorKey> {
         for (int i = 0; i < jointAnimationTrack.scaleKeys.size()-1; i++) {
             aiVectorKey kf = jointAnimationTrack.scaleKeys[i];
             aiVectorKey kfPlusOne = jointAnimationTrack.scaleKeys[i +1];
-            if (time >= kf.mTime && time < kfPlusOne.mTime) {
+            if (time >= (kf.mTime / tps)  && time < (kfPlusOne.mTime / tps)) {
                 return std::make_pair(kf, kfPlusOne);
             }
 

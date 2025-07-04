@@ -26,7 +26,7 @@ struct GameObject {
         GraphicsHandle meshVertexArray;
         GraphicsHandle meshTextureHandle;
         GraphicsHandle meshShaderProgram;
-        Mesh* mesh = nullptr;
+        std::vector<Mesh*> meshes;
     } renderData;
 
 
@@ -47,14 +47,17 @@ struct GameState {
 
     struct GraphicsState {
         GraphicsHandle shaderProgram;
+        GraphicsHandle textShaderProgram;
+        GraphicsHandle animatedShaderProgram;
         GraphicsHandle quadVertexBuffer;
         GraphicsHandle quadIndexBuffer;
         GraphicsHandle vertexArray;
         GraphicsHandle textureHandle;
         GraphicsHandle cameraTransformBuffer;
         GraphicsHandle objectTransformBuffer;
+        GraphicsHandle skinningMatricesCBuffer;
         GraphicsHandle fontHandle;
-        GraphicsHandle textShaderProgram;
+
         GraphicsHandle jointDebugTexture;
         Mesh* jointDebugMesh = nullptr;
 

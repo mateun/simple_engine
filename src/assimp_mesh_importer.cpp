@@ -11,6 +11,7 @@
 #include <assimp/postprocess.h>
 #include <glm/glm.hpp>
 #include "engine.h"
+#include "stb_image.h"
 #include "glm/gtc/type_ptr.hpp"
 
 static glm::mat4 matrixAssimpToGLM(const aiMatrix4x4& from) {
@@ -58,11 +59,57 @@ std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
     auto scene = importer.ReadFile(fileName, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_FlipWindingOrder | aiProcess_FlipUVs |  aiProcess_LimitBoneWeights | aiProcess_CalcTangentSpace);
     assert(scene != nullptr);
 
+
+
     std::vector<MeshData*> meshImportDatas;
     for (int meshIndex = 0; meshIndex < scene->mNumMeshes; meshIndex++) {
         auto mesh = scene->mMeshes[meshIndex];
         auto meshImportData = new MeshData();
         meshImportDatas.push_back(meshImportData);
+
+
+        // Material linkage:
+        auto ai_material = scene->mMaterials[mesh->mMaterialIndex];
+        meshImportData->materialName = ai_material->GetName().C_Str();
+        aiString diffuseTexturePath;
+        aiString normalMapPath;
+        ai_material->GetTexture(aiTextureType_DIFFUSE, 0, &diffuseTexturePath);
+        ai_material->GetTexture(aiTextureType_NORMALS, 0, &normalMapPath);
+        // Check for embedded texture
+        if (diffuseTexturePath.C_Str()[0] == '*') {
+            auto textureIndex = std::atoi(diffuseTexturePath.C_Str() + 1);
+            auto texture = scene->mTextures[textureIndex];
+
+            // Compressed?
+            if (texture->mHeight == 0) {
+                const uint8_t* imageData = (const uint8_t*)texture->pcData;
+                size_t imageSize = texture->mWidth;
+                int w, h, channels;
+                uint8_t* pixels = stbi_load_from_memory(imageData, imageSize, &w, &h, &channels, 4);
+                if (!pixels) {
+                    std::cerr << "failed to load embedded texture" << std::endl;
+                    // TODO error handling
+                } else {
+                    meshImportData->diffuseTexture = createTexture(w, h, pixels, channels);
+                    stbi_image_free(pixels);
+                }
+            }
+
+
+        } else {
+            // External texture file, so we store the path
+            // TODO should we anyway retrieve the texture right away?
+            // How to handle atlases? Many meshes will use the same texture,
+            // so we might want to decide this not here in the importer, what to do with this texture.
+            meshImportData->diffuseTexturePath = diffuseTexturePath.C_Str();
+
+        }
+        if (normalMapPath.C_Str()[0] == '*') {
+            auto normal_texture = scene->GetEmbeddedTexture(normalMapPath.C_Str());
+            if (normal_texture) {
+                meshImportData->normalMapPath = normal_texture->mFilename.C_Str() + std::string(".") + normal_texture->achFormatHint;
+            }
+        }
 
         meshImportData->meshName = scene->mMeshes[meshIndex]->mName.C_Str();
         meshImportData->stride = sizeof(float) * 6; // pos + normals, always.
@@ -140,7 +187,8 @@ std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
                     auto myAnimation = new Animation();
                     meshImportData->skeleton->animations.push_back(myAnimation);
                     myAnimation->name = scene->mAnimations[animIndex]->mName.C_Str();
-                    myAnimation->duration = scene->mAnimations[animIndex]->mDuration;
+                    myAnimation->duration = scene->mAnimations[animIndex]->mDuration / scene->mAnimations[animIndex]->mTicksPerSecond;
+                    myAnimation->ticksPerSecond = scene->mAnimations[animIndex]->mTicksPerSecond;
 
                     for (int channelIndex = 0; channelIndex < animation->mNumChannels; channelIndex++) {
                         auto channel = animation->mChannels[channelIndex];
@@ -257,6 +305,9 @@ std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
                 finalJointIndices.push_back(indices);
                 finalJointWeights.push_back(weights);
             }
+
+            meshImportData->jointIndices = finalJointIndices;
+            meshImportData->jointWeights = finalJointWeights;
 
             for (unsigned int b = 0; b < mesh->mNumBones; b++) {
                 auto bone= mesh->mBones[b];

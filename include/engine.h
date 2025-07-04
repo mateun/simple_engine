@@ -3,6 +3,7 @@
 //
 
 #define NOMINMAX
+#include <assimp/material.h>
 #ifndef GRAPHICS_H
 #define GRAPHICS_H
 
@@ -101,8 +102,18 @@ struct MeshData {
 
     uint32_t stride;    // The size in bytes of 1 vertex
 
-    // Optional
+    // Material data
+    std::string materialName;
+    std::string diffuseTexturePath; // needed for external textures
+    std::string normalMapPath;
+    GraphicsHandle diffuseTexture;  // already the full texture created in memory if it was embedded in the gltf file.
+
+    // Skeleton/joints data:
     Skeleton * skeleton = nullptr;
+    std::vector<glm::vec4> jointIndices;
+    std::vector<glm::vec4> jointWeights;
+
+
 
     Mesh* toMesh();
 };
@@ -133,8 +144,19 @@ struct Mesh {
     GraphicsHandle meshVertexBuffer;
     GraphicsHandle meshIndexBuffer;
     GraphicsHandle meshVertexArray;
+    std::vector<glm::vec3> positions;
+    std::vector<glm::vec2> uvs;
     uint32_t index_count;
     Skeleton* skeleton = nullptr;
+    std::vector<glm::vec4> jointIndices;
+    std::vector<glm::vec4> jointWeights;
+    std::string name;
+    std::string materialName;
+    GraphicsHandle diffuseTexture;
+    std::string diffuseTexturePath;
+    GraphicsHandle normalTexture;
+    std::string normalMapPath;
+
 };
 
 enum class FillMode {
@@ -156,6 +178,7 @@ struct Animation {
     std::string name;
     float duration = -1;
     std::map<std::string, JointAnimationTrack> jointAnimationTracks;
+    double ticksPerSecond;
 };
 
 struct StartEndKeyFrame {

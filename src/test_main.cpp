@@ -6,6 +6,7 @@
 #include "game.h"
 #include <vector>
 #define STB_IMAGE_IMPLEMENTATION
+#include <ranges>
 #include <stb_image.h>
 #include <assimp/anim.h>
 #include <glm/glm.hpp>
@@ -98,12 +99,11 @@ void do_frame(const Win32Window & window, GameState& gameState) {
     setDepthTesting(true);
     clear(0, 0.0, 0, 1);
 
-
     // Render 3D scene
     // Update perspective camera
     uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.perspectiveCamera->matrixBufferPtr(), sizeof(glm::mat4) * 2, 1);
 
-    // Render test for our 2d quad
+    // Render some test quads
     {
         bindVertexArray(gameState.graphics.vertexArray);
         bindShaderProgram(gameState.graphics.shaderProgram);
@@ -125,55 +125,67 @@ void do_frame(const Win32Window & window, GameState& gameState) {
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
     }
 
-
-
     // Render each game object
-    bindShaderProgram(gameState.graphics.shaderProgram);
-    for (auto go : gameState.gameObjects) {
-        bindVertexArray(go->renderData.mesh->meshVertexArray);
-        bindTexture(gameState.graphics.textureHandle, 0);
+    static float animationTime = 0.0f;
+    animationTime += frame_time;
+    //animationTime = 0.0f;
 
-        if (go->renderData.mesh->skeleton != nullptr) {
-            static float animationTime = 0.0f;
-            animationTime += frame_time;
-            if (go->renderData.mesh->skeleton->animations.size() > 0) {
+    for (auto go : gameState.gameObjects) {
+        for (auto mesh : go->renderData.meshes) {
+            bindVertexArray(mesh->meshVertexArray);
+            bindTexture(mesh->diffuseTexture, 0);
+
+        if (mesh->skeleton != nullptr) {
+            if (mesh->skeleton->animations.size() > 0) {
+                // We need a different shader here, which knows our attributes for blend-weights, blend-indices and the
+                // matrix palette cbuffer.
+                bindShaderProgram(gameState.graphics.animatedShaderProgram);
+
                 // Run the first animation here
-                auto animation = go->renderData.mesh->skeleton->animations[0];
-                for (auto joint : go->renderData.mesh->skeleton->joints) {
+                auto animation = mesh->skeleton->animations[0];
+                if (animationTime >= animation->duration) {
+                    std::cout << "Animation looping" << std::to_string(animationTime) << std::endl;
+                    animationTime = 0.0f;
+                }
+                for (auto joint : mesh->skeleton->joints) {
                     auto translationKeys = getStartEndKeyFrameForTime(animationTime, animation, KeyFrameType::Translation, joint->name);
                     auto rotationKeys = getStartEndKeyFrameForTime(animationTime, animation, KeyFrameType::Rotation, joint->name);
                     auto scalingKeys = getStartEndKeyFrameForTime(animationTime, animation, KeyFrameType::Scale, joint->name);
 
                     // Translation interpolation:
-                    float t0 = translationKeys.posKeys.first.mTime;
-                    float t1 = translationKeys.posKeys.second.mTime;
+                    float t0 = translationKeys.posKeys.first.mTime / animation->ticksPerSecond;;
+                    float t1 = translationKeys.posKeys.second.mTime / animation->ticksPerSecond;
                     glm::vec3 p0 = aiToGLM(translationKeys.posKeys.first.mValue);
                     glm::vec3 p1 = aiToGLM(translationKeys.posKeys.second.mValue);
                     float t = ((float) animationTime - t0 ) / (float) (t1 - t0);
                     glm::vec3 p = glm::mix(p0, p1, t);
 
                     // Rotation interpolation
-                    t0 = rotationKeys.rotKeys.first.mTime;
-                    t1 = rotationKeys.rotKeys.second.mTime;
+                    t0 = rotationKeys.rotKeys.first.mTime / animation->ticksPerSecond;
+                    t1 = rotationKeys.rotKeys.second.mTime / animation->ticksPerSecond;
                     glm::quat q0 = aiToGLM(rotationKeys.rotKeys.first.mValue);
                     glm::quat q1 = aiToGLM(rotationKeys.rotKeys.second.mValue);
                     t = ((float) animationTime - t0 ) / (float) (t1 - t0);
+                    // if (joint->name == "spine") {
+                    //     printf("time: %.2f | t0: %.2f, t1: %.2f, t: %.2f\n", animationTime, t0, t1, t);
+                    // }
                     glm::quat q = glm::slerp(q0, q1, t);
 
                     // Scaling interpolation
-                    t0 = scalingKeys.scaleKeys.first.mTime;
-                    t1 = scalingKeys.scaleKeys.second.mTime;
-                    glm::quat s0 = aiToGLM(scalingKeys.scaleKeys.first.mValue);
-                    glm::quat s1 = aiToGLM(scalingKeys.scaleKeys.second.mValue);
+                    t0 = scalingKeys.scaleKeys.first.mTime / animation->ticksPerSecond;
+                    t1 = scalingKeys.scaleKeys.second.mTime / animation->ticksPerSecond;
+                    glm::vec3 s0 = aiToGLM(scalingKeys.scaleKeys.first.mValue);
+                    glm::vec3 s1 = aiToGLM(scalingKeys.scaleKeys.second.mValue);
                     t = ((float) animationTime - t0 ) / (float) (t1 - t0);
-                    glm::quat s = glm::mix(s0, s1, t);
+                    glm::vec3 s = glm::mix(s0, s1, t);
 
-                    joint->poseLocalTransform = translate(glm::mat4(1.0f), p) * glm::toMat4(q) * glm::toMat4(s);
+                    joint->poseLocalTransform = translate(glm::mat4(1.0f), p) * glm::toMat4(q) *
+                        glm::scale(glm::mat4(1.0f), s);
 
                 }
 
                 // Now calculate the global pose for each joint:
-                for (auto j  : go->renderData.mesh->skeleton->joints) {
+                for (auto j  : mesh->skeleton->joints) {
                     if (j->parent) {
                         j->poseGlobalTransform = j->parent->poseGlobalTransform * j->poseLocalTransform;
                     } else {
@@ -182,13 +194,20 @@ void do_frame(const Win32Window & window, GameState& gameState) {
                     j->poseFinalTransform = j->poseGlobalTransform * j->inverseBindMatrix;
 
                 }
+
+                // build frame matrix palette.
+                // One transform per joint, we upload this to the gpu for skinning inside the vertex shader:
+                std::vector<glm::mat4> framePalette;
+                for (auto& j : mesh->skeleton->joints) {
+                    framePalette.push_back(j->poseFinalTransform);
+                }
+
+                // Upload to gpu:
+                uploadConstantBufferData( gameState.graphics.skinningMatricesCBuffer, framePalette.data(), sizeof(glm::mat4) * framePalette.size(), 2);
+
+
             }
         }
-
-
-
-
-
 
         static float roto = 0.0f;
         roto += 0.0f * frame_time;
@@ -200,7 +219,7 @@ void do_frame(const Win32Window & window, GameState& gameState) {
         // if (go->renderData.mesh->skeleton != nullptr) {
         //     setFillMode(FillMode::Wireframe);
         // }
-        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, go->renderData.mesh->index_count, 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, mesh->index_count, 0);
 
         // Only show if a special xray button was pressed - TODO
         // If this is a skeletal mesh object we will render every joint of this mesh:
@@ -224,6 +243,9 @@ void do_frame(const Win32Window & window, GameState& gameState) {
             // }
             // setDepthTesting(true);
         // }
+        }
+
+
     }
 
     // Render testmesh
@@ -266,29 +288,7 @@ void do_frame(const Win32Window & window, GameState& gameState) {
     present();
 }
 
-
- static std::string vshader_hlsl = R"(
-
-
-//
-//
-//         VOut VShader(float4 position : POSITION, float2 tex : TEXCOORD0) {
-//
-// 	VOut output;
-// 	output.pos = mul(position, worldm);
-// 	output.pos = mul(output.pos, viewm);
-// 	output.pos = mul(output.pos, projm);
-//
-// 	output.tex = tex;
-// 	output.tex.y = 1-output.tex.y;
-// 	output.tex.x *= textureScale.x;
-// 	output.tex.y *= textureScale.y;
-//
-// 	return output;
-// }
-//
-//
-//
+static std::string vshader_hlsl = R"(
     struct VOutput
     {
         float4 pos : SV_POSITION;
@@ -307,11 +307,57 @@ void do_frame(const Win32Window & window, GameState& gameState) {
 
     };
 
-
     VOutput main(float4 pos : POSITION, float2 uv : TEXCOORD0) {
         VOutput output;
 
         output.pos = mul(pos, world_matrix);
+        output.pos = mul(output.pos, view_matrix);
+        output.pos = mul(output.pos, projection_matrix);
+        output.uv = uv;
+
+        return output;
+     }
+)";
+
+
+
+ static std::string vshader_hlsl_animated = R"(
+    struct VOutput
+    {
+        float4 pos : SV_POSITION;
+        float2 uv : TEXCOORD0;
+
+    };
+
+    // Per object transformation (movement, rotation, scale)
+    cbuffer ObjectTransformBuffer : register(b0) {
+        row_major matrix world_matrix;
+    };
+
+    // PerFrame
+    cbuffer CameraBuffer : register(b1) {
+        row_major float4x4 view_matrix;
+        row_major float4x4 projection_matrix;
+
+    };
+
+    cbuffer SkinningMatrices : register(b2) {
+        row_major float4x4 jointTransforms[50];
+    };
+
+    VOutput main(float4 pos : POSITION, float2 uv : TEXCOORD0,
+                float4 blend_weights : BLENDWEIGHT,
+                float4 blend_indices : BLENDINDICES) {
+
+        VOutput output;
+
+
+        float4 skinned = mul(pos, jointTransforms[blend_indices.x]) * blend_weights.x;
+        skinned += mul(pos, jointTransforms[blend_indices.y]) * blend_weights.y;
+        skinned += mul(pos, jointTransforms[blend_indices.z]) * blend_weights.z;
+        skinned += mul(pos, jointTransforms[blend_indices.w]) * blend_weights.w;
+
+        output.pos = mul(skinned, world_matrix);
         output.pos = mul(output.pos, view_matrix);
         output.pos = mul(output.pos, projection_matrix);
         output.uv = uv;
@@ -428,6 +474,7 @@ void initGame(GameState& gameState) {
 #endif
 #ifdef RENDERER_DX11
     gameState.graphics.shaderProgram = createShaderProgram(vshader_hlsl, fshader_hlsl);
+    gameState.graphics.animatedShaderProgram = createShaderProgram(vshader_hlsl_animated, fshader_hlsl);
     gameState.graphics.textShaderProgram = createShaderProgram(vshader_hlsl, fs_text_hlsl);
 #endif
 
@@ -454,6 +501,19 @@ void initGame(GameState& gameState) {
             sizeof(float) * 3 }
     };
 
+    std::vector<VertexAttributeDescription> vertexAttributesAnimated =  {
+                {"POSITION", 0, 3, DataType::Float, sizeof(float) * 13,
+                0 },
+
+                {"TEXCOORD", 0, 2, DataType::Float, sizeof(float) * 13,
+                sizeof(float) * 3 },
+
+                {"BLENDWEIGHT", 0, 4, DataType::Float, sizeof(float) * 13,
+                    sizeof(float) * 5 },
+                {"BLENDINDICES", 0, 4, DataType::Float, sizeof(float) * 13,
+                    sizeof(float) * 9 },
+    };
+
     // Render a fixed text:
     gameState.graphics.fontHandle = createFont("assets/consola.ttf", 16);
     gameState.textMesh = createTextMesh(gameState.graphics.fontHandle, "Test text rendering");
@@ -463,8 +523,14 @@ void initGame(GameState& gameState) {
     auto importedMeshes = importMeshFromFile("assets/test.glb");
     for (auto im : importedMeshes) {
         auto mesh = im->toMesh();
-        describeVertexAttributes(vertexAttributes, mesh->meshVertexBuffer, gameState.graphics.shaderProgram, mesh->meshVertexArray);
-        gameState.meshPool["hero"] = mesh;
+        // Now we decide which attributes to link with:
+        // For skeletal meshes with animations we use the gpu vertex skinned version, otherwise the "default one":
+        if (mesh->skeleton != nullptr && mesh->skeleton->animations.size() > 0) {
+            describeVertexAttributes(vertexAttributesAnimated, mesh->meshVertexBuffer, gameState.graphics.animatedShaderProgram, mesh->meshVertexArray);
+        } else {
+            describeVertexAttributes(vertexAttributes, mesh->meshVertexBuffer, gameState.graphics.shaderProgram, mesh->meshVertexArray);
+        }
+        gameState.meshPool[im->meshName] = mesh;
     }
 
     {
@@ -481,11 +547,15 @@ void initGame(GameState& gameState) {
     }
 
     auto heroGo = new GameObject();
-    heroGo->renderData.mesh = gameState.meshPool["hero"];
+    for (auto mesh : std::ranges::views::values(gameState.meshPool)) {
+        heroGo->renderData.meshes.push_back(mesh);
+    }
+
     gameState.gameObjects.push_back(heroGo);
 
     gameState.graphics.vertexArray = createVertexArray();
     bindVertexArray(gameState.graphics.vertexArray);
+    gameState.graphics.skinningMatricesCBuffer = createConstantBuffer(sizeof(glm::mat4) * 50);  // TODO have one per skeleton and adjust to the number of actual joints
     gameState.graphics.objectTransformBuffer = createConstantBuffer(sizeof(glm::mat4));
     gameState.graphics.cameraTransformBuffer = createConstantBuffer(sizeof(glm::mat4) * 2);
     gameState.perspectiveCamera = new Camera();
@@ -517,6 +587,9 @@ void initGame(GameState& gameState) {
 
     pixelsdj = load_image("assets/debug_texture_2.png", &image_width, &image_height);
     gameState.texturePool["testmesh4_texture"] = createTexture(image_width, image_height, pixelsdj, 4);
+
+    pixelsdj = load_image("assets/Ch15_1002_Diffuse.png", &image_width, &image_height);
+    gameState.texturePool["ch15"] = createTexture(image_width, image_height, pixelsdj, 4);
 
 }
 
