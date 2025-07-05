@@ -51,7 +51,7 @@ struct GameState {
         GraphicsHandle animatedShaderProgram;
         GraphicsHandle quadVertexBuffer;
         GraphicsHandle quadIndexBuffer;
-        GraphicsHandle vertexArray;
+        GraphicsHandle quadVertexArray;
         GraphicsHandle textureHandle;
         GraphicsHandle cameraTransformBuffer;
         GraphicsHandle objectTransformBuffer;
@@ -61,6 +61,7 @@ struct GameState {
         GraphicsHandle frameBufferTopMenu;
         GraphicsHandle frameBufferAssetPanel;
         GraphicsHandle frameBufferSceneTree;
+        GraphicsHandle shaderProgram3D;
 
         GraphicsHandle jointDebugTexture;
         Mesh* jointDebugMesh = nullptr;

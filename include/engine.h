@@ -192,7 +192,7 @@ struct alignas(16) Camera {
     glm::vec3 getForward();
     glm::vec3 getRight();
     glm::vec3 getUp();
-    glm::mat4 updatenAndGetViewMatrix();
+    glm::mat4 updateAndGetViewMatrix();
     glm::mat4 updateAndGetPerspectiveProjectionMatrix(float fovInDegrees, int width, int height, float nearPlane, float farPlane);
     glm::mat4 getOrthoProjectionMatrix();
 
@@ -276,6 +276,7 @@ void renderGeometry(PrimitiveType primitiveType);
 void updateText(Mesh& textMesh, GraphicsHandle fontHandle, const std::string& text);
 void updateBuffer(GraphicsHandle bufferHandle, BufferType bufferType, void* data, uint32_t size_in_bytes);
 void setFillMode(FillMode mode);
+void setFrontCulling(bool front);
 void setDepthTesting(bool on);
 void setViewport(int originX, int originY, int width, int height);
 void renderGeometryIndexed(PrimitiveType primitiveType, int count, int startIndex);

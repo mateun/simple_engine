@@ -62,12 +62,21 @@ Win32Window::Win32Window(HINSTANCE hInstance, int nCmdShow, const std::wstring& 
 
     RegisterClassExW(&wc);
 
+    // Adjust window size to have the desired size as the client area.
+    // So we must make the win32 window a bit bigger normally, to have
+    // the desired size fully available to the application:
+    RECT clientRect = {0, 0, width, height};
+    DWORD style = WS_OVERLAPPEDWINDOW;
+    AdjustWindowRect(&clientRect, style, FALSE); // FALSE = no menu bar
+    int windowWidth = clientRect.right - clientRect.left;
+    int windowHeight = clientRect.bottom - clientRect.top;
+
     hwnd_ = CreateWindowEx(
         0,
         CLASS_NAME,
         title.c_str(),
         WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, width, height,
+        CW_USEDEFAULT, CW_USEDEFAULT, windowWidth, windowHeight,
         nullptr,
         nullptr,
         hInstance_,

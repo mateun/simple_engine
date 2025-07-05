@@ -153,7 +153,7 @@ glm::vec3 Camera::getUp() {
     return normalize(glm::cross(getRight(), getForward()));
 }
 
-glm::mat4 Camera::updatenAndGetViewMatrix() {
+glm::mat4 Camera::updateAndGetViewMatrix() {
     view_matrix = glm::lookAtLH(location,lookAtTarget, glm::vec3(0, 1, 0));
     return view_matrix;
 
@@ -282,34 +282,34 @@ MeshData* renderTextIntoQuadGeometry(GraphicsHandle fontHandle, const std::strin
             q.y1 = pixel_aligned_y1;
             // q.y1 = 12;
 
-            // meshData->posMasterList.push_back(glm::vec3(q.x0, q.y0, 0));
-            // meshData->posMasterList.push_back(glm::vec3(q.x1, q.y0, 0));
-            // meshData->posMasterList.push_back(glm::vec3(q.x1, q.y1, 0));
-            // meshData->posMasterList.push_back(glm::vec3(q.x0, q.y1, 0));
-
-
+            // Positions
+            meshData->posMasterList.push_back(glm::vec3(q.x0, q.y0, 0));
+            meshData->posMasterList.push_back(glm::vec3(q.x1, q.y0, 0));
+            meshData->posMasterList.push_back(glm::vec3(q.x1, q.y1, 0));
+            meshData->posMasterList.push_back(glm::vec3(q.x0, q.y1, 0));
 
             float flipped_y0 = baseline - q.y1;
             float flipped_y1 = baseline - q.y0;
+            // meshData->posMasterList.push_back(glm::vec3(q.x0, flipped_y0, 0));
+            // meshData->posMasterList.push_back(glm::vec3(q.x1, flipped_y0, 0));
+            // meshData->posMasterList.push_back(glm::vec3(q.x1, flipped_y1, 0));
+            // meshData->posMasterList.push_back(glm::vec3(q.x0, flipped_y1, 0));
 
-            meshData->posMasterList.push_back(glm::vec3(q.x0, flipped_y0, 0));
-            meshData->posMasterList.push_back(glm::vec3(q.x1, flipped_y0, 0));
-            meshData->posMasterList.push_back(glm::vec3(q.x1, flipped_y1, 0));
-            meshData->posMasterList.push_back(glm::vec3(q.x0, flipped_y1, 0));
 
-
-            // meshData->uvMasterList.push_back({q.s0, q.t0});
-            // meshData->uvMasterList.push_back({q.s1, q.t0});
-            // meshData->uvMasterList.push_back({q.s1, q.t1});
-            // meshData->uvMasterList.push_back({q.s0, q.t1});
+            // UVS
+            meshData->uvMasterList.push_back({q.s0, q.t0});
+            meshData->uvMasterList.push_back({q.s1, q.t0});
+            meshData->uvMasterList.push_back({q.s1, q.t1});
+            meshData->uvMasterList.push_back({q.s0, q.t1});
 
             // Flip vertical uv coordinates
-            meshData->uvMasterList.push_back({q.s0, q.t1});
-            meshData->uvMasterList.push_back({q.s1, q.t1});
-            meshData->uvMasterList.push_back({q.s1, q.t0});
-            meshData->uvMasterList.push_back({q.s0, q.t0});
+            // meshData->uvMasterList.push_back({q.s0, q.t1});
+            // meshData->uvMasterList.push_back({q.s1, q.t1});
+            // meshData->uvMasterList.push_back({q.s1, q.t0});
+            // meshData->uvMasterList.push_back({q.s0, q.t0});
 
-
+            //---------------------------------------
+            // INDICES
             int offset = charCounter * 4;
             meshData->indicesFlat.push_back(2 + offset);meshData->indicesFlat.push_back(1 + offset);meshData->indicesFlat.push_back(0 + offset);
             meshData->indicesFlat.push_back(2 + offset);meshData->indicesFlat.push_back(0 + offset);meshData->indicesFlat.push_back(3 + offset);
@@ -317,6 +317,8 @@ MeshData* renderTextIntoQuadGeometry(GraphicsHandle fontHandle, const std::strin
             // Flipped
             // meshData->indicesFlat.push_back(0 + offset);meshData->indicesFlat.push_back(1 + offset);meshData->indicesFlat.push_back(2 + offset);
             // meshData->indicesFlat.push_back(3 + offset);meshData->indicesFlat.push_back(0 + offset);meshData->indicesFlat.push_back(2 + offset);
+            // ----------------------------------------------------------------------------------
+
             charCounter++;
 
            // Track min/max for bounding box

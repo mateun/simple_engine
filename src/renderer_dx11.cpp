@@ -27,8 +27,9 @@ static ID3D11DepthStencilView *depthStencilView;
 static ID3D11DepthStencilState *m_DepthStencilState;
 static ID3D11DepthStencilState * m_depthStencilStateNoDepth;
 static ID3D11SamplerState *defaultSamplerState;
-ID3D11RasterizerState* rasterStateSolid = nullptr;
-ID3D11RasterizerState* rasterStateWireframe = nullptr;
+static ID3D11RasterizerState* rasterStateSolid = nullptr;
+static ID3D11RasterizerState* rasterStateWireframe = nullptr;
+static ID3D11RasterizerState * rasterStateFrontCounter = nullptr;
 static GraphicsHandle defaultTextShaderProgram = {};
 
 struct BufferWrapper {
@@ -168,7 +169,7 @@ void initGraphics(Win32Window& window, bool msaa, int msaa_samples) {
 
     // Bind the backbuffer as our render target
     D3D11_RENDER_TARGET_VIEW_DESC rtvDesc = {};
-    rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB; // ← THIS is where SRGB comes in
+    rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
     rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
     rtvDesc.Texture2D.MipSlice = 0;
 
@@ -247,15 +248,22 @@ void initGraphics(Win32Window& window, bool msaa, int msaa_samples) {
 
     ctx->OMSetDepthStencilState(m_DepthStencilState, 0);
 
+    // Prepare some rasterizer states
     D3D11_RASTERIZER_DESC rsDesc = {};
     rsDesc.FillMode = D3D11_FILL_SOLID;
-    rsDesc.CullMode = D3D11_CULL_BACK;
+    rsDesc.CullMode = D3D11_CULL_NONE;
     rsDesc.FrontCounterClockwise = FALSE;
     rsDesc.DepthClipEnable = TRUE;
     device->CreateRasterizerState(&rsDesc, &rasterStateSolid);
 
     rsDesc.FillMode = D3D11_FILL_WIREFRAME;
     device->CreateRasterizerState(&rsDesc, &rasterStateWireframe);
+    ctx->RSSetState(rasterStateSolid);
+
+    rsDesc.FillMode = D3D11_FILL_SOLID;
+    rsDesc.FrontCounterClockwise = TRUE;
+    device->CreateRasterizerState(&rsDesc, &rasterStateFrontCounter);
+
     ctx->RSSetState(rasterStateSolid);
 
 
@@ -439,6 +447,14 @@ void updateBuffer(GraphicsHandle bufferHandle, BufferType bufferType, void* data
     memcpy(mapped.pData, data, size_in_bytes);
     ctx->Unmap(buffer, 0);
 
+}
+
+void setFrontCulling(bool front) {
+    if (front) {
+        ctx->RSSetState(rasterStateFrontCounter);
+    } else {
+        ctx->RSSetState(rasterStateSolid);
+    }
 }
 
 void setFillMode(FillMode mode) {
@@ -790,7 +806,7 @@ GraphicsHandle createFrameBuffer(int width, int height, bool includeDepthBuffer)
     desc.Height = height;
     desc.MipLevels = 1;
     desc.ArraySize = 1;
-    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
     desc.SampleDesc.Count = 1;
     desc.Usage = D3D11_USAGE_DEFAULT;
     desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;

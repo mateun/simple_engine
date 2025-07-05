@@ -56,17 +56,14 @@ bool isAnimatedJoint(const std::string& name, const aiScene* scene) {
 
 std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
     Assimp::Importer importer;
-    auto scene = importer.ReadFile(fileName, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_FlipWindingOrder | aiProcess_FlipUVs |  aiProcess_LimitBoneWeights | aiProcess_CalcTangentSpace);
+    auto scene = importer.ReadFile(fileName, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_FlipUVs | aiProcess_LimitBoneWeights | aiProcess_CalcTangentSpace);
     assert(scene != nullptr);
-
-
 
     std::vector<MeshData*> meshImportDatas;
     for (int meshIndex = 0; meshIndex < scene->mNumMeshes; meshIndex++) {
         auto mesh = scene->mMeshes[meshIndex];
         auto meshImportData = new MeshData();
         meshImportDatas.push_back(meshImportData);
-
 
         // Material linkage:
         auto ai_material = scene->mMaterials[mesh->mMaterialIndex];
@@ -118,10 +115,11 @@ std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
         }
 
         for (unsigned int vertexIndex = 0; vertexIndex < mesh->mNumVertices; vertexIndex++) {
-            meshImportData->posMasterList.push_back({mesh->mVertices[vertexIndex].x,
-                                     mesh->mVertices[vertexIndex].y,
-                                     -mesh->mVertices[vertexIndex].z});
-            meshImportData->posFlat.push_back(mesh->mVertices[vertexIndex].x);
+            meshImportData->posMasterList.push_back({
+                                        -mesh->mVertices[vertexIndex].x,
+                                        mesh->mVertices[vertexIndex].y,
+                                        -mesh->mVertices[vertexIndex].z});
+            meshImportData->posFlat.push_back(-mesh->mVertices[vertexIndex].x);
             meshImportData->posFlat.push_back(mesh->mVertices[vertexIndex].y);
             meshImportData->posFlat.push_back(-mesh->mVertices[vertexIndex].z);
 
