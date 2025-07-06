@@ -83,6 +83,7 @@ Mesh * MeshData::toMesh() {
     mesh->jointIndices = jointIndices;
     mesh->jointWeights = jointWeights;
     mesh->name = meshName;
+    mesh->diffuseTexture = diffuseTexturePath.empty() ? GraphicsHandle{-1} : createTextureFromFile(diffuseTexturePath);
     return mesh;
 }
 
@@ -91,38 +92,49 @@ StartEndKeyFrame getStartEndKeyFrameForTime(float time, Animation* animation, Ke
     auto jointAnimationTrack = animation->jointAnimationTracks[jointName];
     auto tps = animation->ticksPerSecond;
 
+
+
     auto extractPositions = [jointAnimationTrack, time, tps] () -> std::pair<aiVectorKey, aiVectorKey> {
+        std::pair<aiVectorKey, aiVectorKey> defaultResult = {jointAnimationTrack.positionKeys[0], jointAnimationTrack.positionKeys[0]};
+
         for (int i = 0; i < jointAnimationTrack.positionKeys.size()-1; i++) {
             aiVectorKey kf = jointAnimationTrack.positionKeys[i];
             aiVectorKey kfPlusOne = jointAnimationTrack.positionKeys[i +1];
-            if (time >= (kf.mTime/ tps )  && time < (kfPlusOne.mTime / tps)) {
+            auto timeFrom = kf.mTime / tps;
+            auto timeTo = kfPlusOne.mTime / tps;
+            if (time >= timeFrom && time < timeTo) {
                 return std::make_pair(kf, kfPlusOne);
             }
-
         }
+
+        return defaultResult;
     };
 
     auto extractRotations = [jointAnimationTrack, time, tps] () -> std::pair<aiQuatKey, aiQuatKey> {
+        std::pair<aiQuatKey, aiQuatKey> defaultResult = {jointAnimationTrack.rotationKeys[0], jointAnimationTrack.rotationKeys[0]};
+
         for (int i = 0; i < jointAnimationTrack.rotationKeys.size()-1; i++) {
             aiQuatKey kf = jointAnimationTrack.rotationKeys[i];
             aiQuatKey kfPlusOne = jointAnimationTrack.rotationKeys[i +1];
             if (time >= (kf.mTime / tps) && time < (kfPlusOne.mTime / tps)) {
                 return std::make_pair(kf, kfPlusOne);
             }
-
         }
+
+        return defaultResult;
     };
 
 
     auto extractScalings = [jointAnimationTrack, time, tps] () -> std::pair<aiVectorKey, aiVectorKey> {
+        std::pair<aiVectorKey, aiVectorKey> defaultResult = {jointAnimationTrack.scaleKeys[0], jointAnimationTrack.scaleKeys[0]};
         for (int i = 0; i < jointAnimationTrack.scaleKeys.size()-1; i++) {
             aiVectorKey kf = jointAnimationTrack.scaleKeys[i];
             aiVectorKey kfPlusOne = jointAnimationTrack.scaleKeys[i +1];
             if (time >= (kf.mTime / tps)  && time < (kfPlusOne.mTime / tps)) {
                 return std::make_pair(kf, kfPlusOne);
             }
-
         }
+        return defaultResult;
     };
 
     if (type == KeyFrameType::Translation) {

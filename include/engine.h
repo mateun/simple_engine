@@ -153,7 +153,7 @@ struct Mesh {
     std::vector<glm::vec4> jointWeights;
     std::string name;
     std::string materialName;
-    GraphicsHandle diffuseTexture;
+    GraphicsHandle diffuseTexture = {-1};
     std::string diffuseTexturePath;
     GraphicsHandle normalTexture;
     std::string normalMapPath;
@@ -242,6 +242,7 @@ private:
 
 GraphicsHandle createFont(const std::string& fontName, int fontSize);
 GraphicsHandle createTexture(int width, int height, uint8_t* pixels, uint8_t num_channels);
+GraphicsHandle createTextureFromFile(const std::string& diffuseTexturePath);
 GraphicsHandle createShader(const std::string& code, ShaderType type);
 GraphicsHandle createShaderProgram(const std::string& vsCode, const std::string& fsCode);
 GraphicsHandle createVertexBuffer(void* data, int size, uint32_t stride=0, BufferUsage usage = BufferUsage::Static);

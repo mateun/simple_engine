@@ -16,7 +16,7 @@ struct GameObject {
         glm::vec3 position;
         glm::vec3 orientation;
         glm::vec3 scale;
-    };
+    } transform;
 
     struct RenderData {
         GraphicsHandle transformBuffer;
@@ -29,7 +29,7 @@ struct GameObject {
         std::vector<Mesh*> meshes;
     } renderData;
 
-
+    GraphicsHandle diffuseTexture = {-1};
 };
 
 struct alignas(16) ObjectTransformBuffer {

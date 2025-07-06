@@ -229,7 +229,22 @@ void do_frame(const Win32Window & window, GameState& gameState) {
         // Render each mesh of this game object:
         for (auto mesh : go->renderData.meshes) {
             bindVertexArray(mesh->meshVertexArray);
-            bindTexture(mesh->diffuseTexture, 0);
+
+            // Texture: first we take one of the gameObject, if it is set.
+            // If not present, we take the one from the mesh.
+            // So, the gameObject can override the "bakedIn" original texture
+            // if needed.
+            // Otherwise, fall back to dummy texture for now.
+            if (go->diffuseTexture.id != -1) {
+                bindTexture(go->diffuseTexture, 0);
+            } else {
+                if (mesh->diffuseTexture.id != -1) {
+                    bindTexture(mesh->diffuseTexture, 0);
+                } else {
+                    bindTexture(gameState.texturePool["debug_texture"], 0);
+                }
+
+            }
 
             // Skeleton/joint posing:
             if (mesh->skeleton != nullptr) {
@@ -310,7 +325,7 @@ void do_frame(const Win32Window & window, GameState& gameState) {
             roto += 0.0f * frame_time;
             auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(roto), glm::vec3(0.0f, 0.0f, 1.0f));
             auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
-            auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, 1)) * rotationMatrix * scaleMatrix;
+            auto worldMatrix = glm::translate(glm::mat4(1.0f), go->transform.position) * rotationMatrix * scaleMatrix;
             uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
             renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, mesh->index_count, 0);
         }
@@ -606,7 +621,7 @@ void initEditor(GameState& gameState) {
 
 
     // Mesh import and vertex buffer creation etc.
-    auto importedMeshes = importMeshFromFile("assets/knight.glb");
+    auto importedMeshes = importMeshFromFile("assets/test2.glb");
     for (auto im : importedMeshes) {
         auto mesh = im->toMesh();
         // Now we decide which attributes to link with:
@@ -636,6 +651,7 @@ void initEditor(GameState& gameState) {
     for (auto mesh : std::ranges::views::values(gameState.meshPool)) {
         heroGo->renderData.meshes.push_back(mesh);
     }
+    heroGo->transform.position = glm::vec3(0, 0, 0);
 
     gameState.gameObjects.push_back(heroGo);
 
@@ -667,6 +683,7 @@ void initEditor(GameState& gameState) {
     int image_width, image_height;
     auto pixels = load_image("assets/debug_texture.jpg", &image_width, &image_height);
     gameState.graphics.textureHandle = createTexture(image_width, image_height, pixels, 4);
+    gameState.texturePool["debug_texture"] = gameState.graphics.textureHandle;
 
     auto pixelsdj = load_image("assets/debug_joint_texture.png", &image_width, &image_height);
     gameState.graphics.jointDebugTexture = createTexture(image_width, image_height, pixelsdj, 4);

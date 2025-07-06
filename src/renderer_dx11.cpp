@@ -15,6 +15,7 @@
 #include <map>
 #include <vector>
 #include <ostream>
+#include <stb_image.h>
 
 static ID3D11Device *device;
 static ID3D11DeviceContext *ctx;
@@ -367,6 +368,17 @@ GraphicsHandle createTexture(int width, int height, uint8_t *pixels, uint8_t num
     GraphicsHandle handle = {nextHandleId++};
     textureMap[handle.id] = {texture, srv, nullptr, nullptr };  // Currently we are only dealing with "standard" textures here
     return handle;
+}
+
+GraphicsHandle createTextureFromFile(const std::string &texturePath) {
+    int imageChannels, width, height;
+
+    auto pixels = stbi_load(
+            texturePath.c_str(), &width, &height,
+            &imageChannels,
+            4);
+
+    return createTexture(width, height, pixels, imageChannels);
 }
 
 GraphicsHandle createShader(const std::string& code, ShaderType type) {
