@@ -86,9 +86,7 @@ void update_camera(GameState& gameState) {
     auto locCandidate = gameState.perspectiveCamera->location + glm::vec3{camspeed * fwd.x, 0, camspeed * fwd.z} * dir;
     // Do any checks if needed.
     gameState.perspectiveCamera->location = locCandidate;
-
     gameState.perspectiveCamera->updateAndGetViewMatrix();
-
 
 }
 
@@ -97,18 +95,35 @@ void renderTopMenu(int originX, int originY, int width, int height, GameState& g
         // Render topmenu
         setFrontCulling(true);
         bindVertexArray(gameState.graphics.quadVertexArray);
-        bindShaderProgram(gameState.graphics.shaderProgram);
         bindFrameBuffer(gameState.graphics.frameBufferTopMenu, 0, 0, width, height);
-        clearFrameBuffer(gameState.graphics.frameBufferTopMenu, 0.1, .1, 0.1, 1);
+        clearFrameBuffer(gameState.graphics.frameBufferTopMenu, 0.1, .1, 0.11, 1);
 
+        // Specific projection cam for this panel:
+        Camera cam;
+        cam.view_matrix = glm::mat4(1);
+        cam.projection_matrix = glm::orthoLH_ZO<float>(0.0f, (float) width, (float) height, 0.0f, 0.0, 30);
+        uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, cam.matrixBufferPtr(), sizeof(Camera), 1);
+
+        // Render menu texts
+        enableBlending(true);
+        bindShaderProgram(gameState.graphics.textShaderProgram);
+        auto textMesh = gameState.menuTextMeshes.tmFile;
+        bindVertexArray(textMesh->meshVertexArray);
+        bindTexture(getTextureFromFont(gameState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(8, 24, 1)) *  scaleMatrix;
+        uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
 
         // Draw to default backbuffer
+        enableBlending(false);
         bindDefaultBackbuffer(0, 0, gameState.screen_width, gameState.screen_height);
+        bindVertexArray(gameState.graphics.quadVertexArray);
+        bindShaderProgram(gameState.graphics.shaderProgram);
         bindFrameBufferTexture(gameState.graphics.frameBufferTopMenu, 0);
         uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
-        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1));
-        auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(originX, originY, 0.9)) * rotationMatrix * scaleMatrix;
+        scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1));
+        worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(originX, originY, 0.9)) * scaleMatrix;
         //setFrontCulling(false);
         uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
@@ -116,18 +131,18 @@ void renderTopMenu(int originX, int originY, int width, int height, GameState& g
 
     // Render frametime:
     // Currently directly into the main framebuffer - TODO change?!
-        bindShaderProgram(gameState.graphics.textShaderProgram);
-        uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
-
-        auto textMesh = gameState.textMesh;
-        updateText(*textMesh, gameState.graphics.fontHandle, "FTus: " + std::to_string(gameState.frameTimer->getAverage() * 1000 * 1000));
-        bindVertexArray(textMesh->meshVertexArray);
-        bindTexture(getTextureFromFont(gameState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
-        auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
-        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0, 64, 1)) * rotationMatrix * scaleMatrix;
-        uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+        // bindShaderProgram(gameState.graphics.textShaderProgram);
+        // uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
+        //
+        // auto textMesh = gameState.textMesh;
+        // updateText(*textMesh, gameState.graphics.fontHandle, "FTus: " + std::to_string(gameState.frameTimer->getAverage() * 1000 * 1000));
+        // bindVertexArray(textMesh->meshVertexArray);
+        // bindTexture(getTextureFromFont(gameState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
+        // auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        // auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+        // auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0, 64, 1)) * rotationMatrix * scaleMatrix;
+        // uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        // renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
     // End text rendering
 
 
@@ -143,16 +158,27 @@ void renderSceneTree(int originX, int originY, int width, int height, GameState&
         Camera sceneTreeCamera;
         sceneTreeCamera.view_matrix = glm::mat4(1);
         sceneTreeCamera.projection_matrix = glm::orthoLH_ZO<float>(0.0f, (float) width, (float) height, 0.0f, 0.0, 30);
-        uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, &sceneTreeCamera, sizeof(Camera), 1);
+        uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, sceneTreeCamera.matrixBufferPtr(), sizeof(Camera), 1);
 
+        enableBlending(true);
         // Now render the actual scene tree objects (gameObjects),
         // for now just dummy rects.
         auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(128, 16, 1));
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(32, 32, 1));
         auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(120, 50, 2)) * rotationMatrix * scaleMatrix;
         // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
         uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+
+        bindShaderProgram(gameState.graphics.textShaderProgram);
+        auto textMesh = gameState.textMesh;
+        updateText(*textMesh, gameState.graphics.fontHandle, "FT(us): " + std::to_string(gameState.frameTimer->getAverage() * 1000 * 1000));
+        bindVertexArray(textMesh->meshVertexArray);
+        bindTexture(getTextureFromFont(gameState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
+        scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+        worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(8, 400, 1)) *  scaleMatrix;
+        uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
 
 
         // Text rendering
@@ -170,8 +196,10 @@ void renderSceneTree(int originX, int originY, int width, int height, GameState&
 
         // Render the framebuffer as a quad somewhere on the screen:
 
-
+        enableBlending(false);
         bindDefaultBackbuffer(0, 0, gameState.screen_width, gameState.screen_height);
+        bindVertexArray(gameState.graphics.quadVertexArray);
+        bindShaderProgram(gameState.graphics.shaderProgram);
         bindFrameBufferTexture(gameState.graphics.frameBufferSceneTree, 0);
         uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
         scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1));
@@ -612,11 +640,14 @@ void initEditor(GameState& gameState) {
     // Prepare text render meshes:
     gameState.graphics.fontHandle = createFont("assets/consola.ttf", 16);
     gameState.textMesh = createTextMesh(gameState.graphics.fontHandle, "Test text rendering");
+    gameState.menuTextMeshes.tmFile = createTextMesh(gameState.graphics.fontHandle, "File");
+    gameState.menuTextMeshes.tmGameObjects = createTextMesh(gameState.graphics.fontHandle, "GameObjects");
+    gameState.menuTextMeshes.tmSettings = createTextMesh(gameState.graphics.fontHandle, "Settings");
 
 
     // Prepare an offscreen framebuffer for the 3d scene:
     gameState.graphics.frameBuffer3DPanel = createFrameBuffer(600, 400, true);
-    gameState.graphics.frameBufferTopMenu = createFrameBuffer(800, 64, true);
+    gameState.graphics.frameBufferTopMenu = createFrameBuffer(800, 32, true);
     gameState.graphics.frameBufferSceneTree = createFrameBuffer(200, 600-64, true);
 
 

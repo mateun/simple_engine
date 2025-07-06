@@ -28,6 +28,9 @@ static ID3D11DepthStencilView *depthStencilView;
 static ID3D11DepthStencilState *m_DepthStencilState;
 static ID3D11DepthStencilState * m_depthStencilStateNoDepth;
 static ID3D11SamplerState *defaultSamplerState;
+static ID3D11BlendState* opaqueBlendState = nullptr;
+static ID3D11BlendState* blendState = nullptr;
+static float blendFactor[4] = { 0, 0, 0, 0 };
 static ID3D11RasterizerState* rasterStateSolid = nullptr;
 static ID3D11RasterizerState* rasterStateWireframe = nullptr;
 static ID3D11RasterizerState * rasterStateFrontCounter = nullptr;
@@ -303,13 +306,21 @@ void initGraphics(Win32Window& window, bool msaa, int msaa_samples) {
     blendDesc.RenderTarget[0].DestBlendAlpha        = D3D11_BLEND_ZERO;
     blendDesc.RenderTarget[0].BlendOpAlpha          = D3D11_BLEND_OP_ADD;
     blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-
-    ID3D11BlendState* blendState = nullptr;
     device->CreateBlendState(&blendDesc, &blendState);
-
-    // Then set it before drawing:
-    float blendFactor[4] = { 0, 0, 0, 0 };
     ctx->OMSetBlendState(blendState, blendFactor, 0xffffffff);
+
+    blendDesc = {};
+    blendDesc.RenderTarget[0].BlendEnable = TRUE;
+    blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+    blendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_ZERO;
+    blendDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    blendDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+    blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
+    blendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+
+
+    device->CreateBlendState(&blendDesc, &opaqueBlendState);
 }
 #include <comdef.h>
 void present() {
@@ -484,6 +495,15 @@ void setDepthTesting(bool on) {
     } else {
         ctx->OMSetDepthStencilState(m_depthStencilStateNoDepth, 0);
     }
+}
+
+void enableBlending(bool enable) {
+    if (enable) {
+        ctx->OMSetBlendState(blendState, blendFactor, 0xffffffff);
+    } else {
+        ctx->OMSetBlendState(opaqueBlendState, nullptr, 0xffffffff);
+    }
+
 }
 
 void setViewport(int originX, int originY, int width, int height) {

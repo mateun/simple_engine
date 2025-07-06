@@ -279,6 +279,7 @@ void updateBuffer(GraphicsHandle bufferHandle, BufferType bufferType, void* data
 void setFillMode(FillMode mode);
 void setFrontCulling(bool front);
 void setDepthTesting(bool on);
+void enableBlending(bool enable);
 void setViewport(int originX, int originY, int width, int height);
 void renderGeometryIndexed(PrimitiveType primitiveType, int count, int startIndex);
 void present();

@@ -45,6 +45,12 @@ struct GameState {
     std::map<std::string, Mesh*> meshPool;
     std::map<std::string, GraphicsHandle> texturePool;
 
+    struct MenuTextMeshes {
+        Mesh* tmFile;
+        Mesh* tmGameObjects;
+        Mesh* tmSettings;
+    } menuTextMeshes;
+
     struct GraphicsState {
         GraphicsHandle shaderProgram;
         GraphicsHandle textShaderProgram;
