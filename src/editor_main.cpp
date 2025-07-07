@@ -221,7 +221,7 @@ void render3DPanel(int originX, int originY, int width, int height, EditorState 
     setFrontCulling(false);
 
     bindShaderProgram(editorState.graphics.shaderProgram3D);
-    bindFrameBuffer(editorState.graphics.frameBuffer3DPanel, 0, 0, 600, 400);
+    bindFrameBuffer(editorState.graphics.frameBuffer3DPanel, 0, 0, width, height);
     clearFrameBuffer(editorState.graphics.frameBuffer3DPanel, .04, .0, 0.0, 1);
     uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.perspectiveCamera->matrixBufferPtr(), sizeof(glm::mat4) * 2, 1);
 
@@ -348,9 +348,9 @@ void render3DPanel(int originX, int originY, int width, int height, EditorState 
         bindVertexArray(editorState.graphics.quadVertexArray);
         bindShaderProgram(editorState.graphics.shaderProgram);
 
-        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(600, 400, 1));
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1));
         auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(200 + 600/2, 32 + 500/2, 0.9)) * rotationMatrix * scaleMatrix;
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(200 + width/2, 32 + height/2, 0.9)) * rotationMatrix * scaleMatrix;
         //setFrontCulling(false);
         uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
@@ -482,7 +482,7 @@ void renderPanels(EditorState& editorState) {
     // This is bettter than letting the panel know where it is supposed to be. It normally can not know it.
     renderTopMenu(editorState.screen_width/2, 16, editorState.screen_width, 32, editorState);
     renderSceneTree(200/2, 32+ (editorState.screen_height-64)/2, 200, editorState.screen_height-64, editorState);
-    render3DPanel(200, 32 + (editorState.screen_height - 64/2), 200, editorState.screen_height - 64, editorState);
+    render3DPanel(200, 32 + (editorState.screen_height - 64/2), editorState.screen_width - 400, editorState.screen_height - 64, editorState);
     renderAssetPanel(editorState.screen_width - 100, 32+ (editorState.screen_height-64)/2, 200, editorState.screen_height-64, editorState);
     renderStatusBar(editorState.screen_width/2, editorState.screen_height - 16, editorState.screen_width, 32, editorState);
 
@@ -796,7 +796,7 @@ void initEditor(EditorState& editorState) {
     editorState.menuTextMeshes.tmModelImport = createTextMesh(editorState.graphics.fontHandle, "Import");
 
     // Prepare an offscreen framebuffer for the 3d scene:
-    editorState.graphics.frameBuffer3DPanel = createFrameBuffer(editorState.screen_width - 200 * 2, 400, true);
+    editorState.graphics.frameBuffer3DPanel = createFrameBuffer(editorState.screen_width - 200 * 2, editorState.screen_height - 64, true);
     editorState.graphics.frameBufferTopMenu = createFrameBuffer(editorState.screen_width, 32, true);
     editorState.graphics.frameBufferStatusBar = createFrameBuffer(editorState.screen_width, 32, true);
     editorState.graphics.frameBufferSceneTree = createFrameBuffer(200, editorState.screen_height-64, true);
