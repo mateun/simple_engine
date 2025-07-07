@@ -4,6 +4,9 @@
 #include <Windows.h>
 
 extern WPARAM last_key_press();
+extern int winMouseX();
+extern int winMouseY();
+extern bool winLeftMouseUp();
 
 // We support Windows VK_ macros here.
 bool keyPressed(int key) {
@@ -13,4 +16,16 @@ bool keyPressed(int key) {
 
 bool isKeyDown(int key) {
     return GetKeyState(key) & 0x8000;
+}
+
+bool mouseLeftClick() {
+    return winLeftMouseUp();
+}
+
+int mouseX() {
+    return winMouseX();
+}
+
+int mouseY() {
+    return winMouseY();
 }

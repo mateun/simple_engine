@@ -6,6 +6,7 @@
 #include "game.h"
 #include <vector>
 #define STB_IMAGE_IMPLEMENTATION
+#include <codecvt>
 #include <ranges>
 #include <stb_image.h>
 #include <assimp/anim.h>
@@ -17,6 +18,8 @@
 #include "glm/gtx/quaternion.hpp"
 
 static float frame_time = 0.0f;
+
+void render3DPanel(EditorState& editorState);
 
 void clear_screen(int width, int height, Win32Window& window, uint32_t *pixels32) {
     auto start_clear = window.performance_count();
@@ -48,7 +51,7 @@ void do_sw_frame(Win32Window& window) {
 
 #endif
 
-void update_camera(GameState& gameState) {
+void update_camera(EditorState& gameState) {
     float movementSpeed = 10.0f;
     float camspeed = movementSpeed * frame_time;
     float rotspeed = movementSpeed * frame_time;
@@ -90,7 +93,7 @@ void update_camera(GameState& gameState) {
 
 }
 
-void renderTopMenu(int originX, int originY, int width, int height, GameState& gameState) {
+void renderTopMenu(int originX, int originY, int width, int height, EditorState& gameState) {
     {
         // Render topmenu
         setFrontCulling(true);
@@ -114,6 +117,16 @@ void renderTopMenu(int originX, int originY, int width, int height, GameState& g
         auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(8, 24, 1)) *  scaleMatrix;
         uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+
+        // Import Model menu item:
+        textMesh = gameState.menuTextMeshes.tmModelImport;
+        bindVertexArray(textMesh->meshVertexArray);
+        scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+        worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(64, 24, 1)) *  scaleMatrix;
+        uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+
+
 
         // Draw to default backbuffer
         enableBlending(false);
@@ -148,7 +161,7 @@ void renderTopMenu(int originX, int originY, int width, int height, GameState& g
 
 }
 
-void renderSceneTree(int originX, int originY, int width, int height, GameState& gameState) {
+void renderSceneTree(int originX, int originY, int width, int height, EditorState& gameState) {
         setFrontCulling(true);
         bindVertexArray(gameState.graphics.quadVertexArray);
         bindShaderProgram(gameState.graphics.shaderProgram);
@@ -170,15 +183,7 @@ void renderSceneTree(int originX, int originY, int width, int height, GameState&
         uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
 
-        bindShaderProgram(gameState.graphics.textShaderProgram);
-        auto textMesh = gameState.textMesh;
-        updateText(*textMesh, gameState.graphics.fontHandle, "FT(us): " + std::to_string(gameState.frameTimer->getAverage() * 1000 * 1000));
-        bindVertexArray(textMesh->meshVertexArray);
-        bindTexture(getTextureFromFont(gameState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
-        scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
-        worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(8, 400, 1)) *  scaleMatrix;
-        uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+
 
 
         // Text rendering
@@ -209,51 +214,23 @@ void renderSceneTree(int originX, int originY, int width, int height, GameState&
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
 }
 
-void renderPanels(GameState& gameState) {
-
-    // Bind the basic quad vertex buffer and shader, so we can do 2d rendering:
 
 
-    // Use our common ortho camera here, which is currently not scrollable.
-    // But maybe an interesting idea to have a "virtual editor desktop", where the user could scroll around.
-    // As we draw everything ourselves anyways, the editor itself could be like a game world with panel-continents on it.
-
-
-    // Here we should know where every panel is, so we can give it its position as arguments.
-    // This is bettter than letting the panel know where it is supposed to be. It normally can not know it.
-    renderTopMenu(400, 16, gameState.screen_width, 32, gameState);
-    renderSceneTree(200/2, 32+ (600-64)/2, 200, 600-64, gameState);
-    renderTopMenu(400, gameState.screen_height - 16, gameState.screen_width, 32, gameState);
-    // render3DView();
-    // renderAssetPanel();
-
-}
-
-void do_frame(const Win32Window & window, GameState& gameState) {
-
-    //setViewport(100, 100, 700, 500);
-    update_camera(gameState);
-
-    setDepthTesting(true);
-    clear(0, 0.0, 0, 1);
-
-    renderPanels(gameState);
-
+void render3DPanel(int originX, int originY, int width, int height, EditorState & editorState) {
     // Render 3D scene, first into framebuffer, then as quad on to the final backbuffer.
     setFrontCulling(false);
 
-
-    bindShaderProgram(gameState.graphics.shaderProgram3D);
-    bindFrameBuffer(gameState.graphics.frameBuffer3DPanel, 0, 0, 600, 400);
-    clearFrameBuffer(gameState.graphics.frameBuffer3DPanel, .0, .0, 0.0, 1);
-    uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.perspectiveCamera->matrixBufferPtr(), sizeof(glm::mat4) * 2, 1);
+    bindShaderProgram(editorState.graphics.shaderProgram3D);
+    bindFrameBuffer(editorState.graphics.frameBuffer3DPanel, 0, 0, 600, 400);
+    clearFrameBuffer(editorState.graphics.frameBuffer3DPanel, .04, .0, 0.0, 1);
+    uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.perspectiveCamera->matrixBufferPtr(), sizeof(glm::mat4) * 2, 1);
 
     // Animation timing
     static float animationTime = 0.0f;
     animationTime += frame_time;
 
     // Render each game object:
-    for (auto go : gameState.gameObjects) {
+    for (auto go : editorState.gameObjects) {
         // Render each mesh of this game object:
         for (auto mesh : go->renderData.meshes) {
             bindVertexArray(mesh->meshVertexArray);
@@ -269,7 +246,7 @@ void do_frame(const Win32Window & window, GameState& gameState) {
                 if (mesh->diffuseTexture.id != -1) {
                     bindTexture(mesh->diffuseTexture, 0);
                 } else {
-                    bindTexture(gameState.texturePool["debug_texture"], 0);
+                    bindTexture(editorState.texturePool["debug_texture"], 0);
                 }
 
             }
@@ -279,7 +256,7 @@ void do_frame(const Win32Window & window, GameState& gameState) {
                 if (mesh->skeleton->animations.size() > 0) {
                     // We need a different shader here, which knows our attributes for blend-weights, blend-indices and the
                     // matrix palette cbuffer.
-                    bindShaderProgram(gameState.graphics.animatedShaderProgram);
+                    bindShaderProgram(editorState.graphics.animatedShaderProgram);
 
                     // Run the first animation here
                     auto animation = mesh->skeleton->animations[0];
@@ -343,7 +320,7 @@ void do_frame(const Win32Window & window, GameState& gameState) {
                     }
 
                     // Upload to gpu:
-                    uploadConstantBufferData( gameState.graphics.skinningMatricesCBuffer, framePalette.data(), sizeof(glm::mat4) * framePalette.size(), 2);
+                    uploadConstantBufferData( editorState.graphics.skinningMatricesCBuffer, framePalette.data(), sizeof(glm::mat4) * framePalette.size(), 2);
 
 
                 }
@@ -354,7 +331,7 @@ void do_frame(const Win32Window & window, GameState& gameState) {
             auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(roto), glm::vec3(0.0f, 0.0f, 1.0f));
             auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
             auto worldMatrix = glm::translate(glm::mat4(1.0f), go->transform.position) * rotationMatrix * scaleMatrix;
-            uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+            uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
             renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, mesh->index_count, 0);
         }
 
@@ -364,27 +341,196 @@ void do_frame(const Win32Window & window, GameState& gameState) {
     {
 
 
-        bindDefaultBackbuffer(0, 0, gameState.screen_width, gameState.screen_height);
-        bindFrameBufferTexture(gameState.graphics.frameBuffer3DPanel, 0);
-        uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
+        bindDefaultBackbuffer(0, 0, editorState.screen_width, editorState.screen_height);
+        bindFrameBufferTexture(editorState.graphics.frameBuffer3DPanel, 0);
+        uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
 
-        bindVertexArray(gameState.graphics.quadVertexArray);
-        bindShaderProgram(gameState.graphics.shaderProgram);
+        bindVertexArray(editorState.graphics.quadVertexArray);
+        bindShaderProgram(editorState.graphics.shaderProgram);
 
         auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(600, 400, 1));
         auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(200 + 600/2, 32 + 500/2, 0.9)) * rotationMatrix * scaleMatrix;
         //setFrontCulling(false);
-        uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
     }
 
     // End 3d scene
 
+}
+
+void renderAssetPanel(int originX, int originY, int width, int height, EditorState & editorState) {
+      setFrontCulling(true);
+        bindVertexArray(editorState.graphics.quadVertexArray);
+        bindShaderProgram(editorState.graphics.shaderProgram);
+        bindFrameBuffer(editorState.graphics.frameBufferSceneTree, 0, 0, width, height);
+        clearFrameBuffer(editorState.graphics.frameBufferSceneTree, .1, .1, 0.1, 1);
+        bindTexture(editorState.graphics.textureHandle, 0);
+        Camera sceneTreeCamera;
+        sceneTreeCamera.view_matrix = glm::mat4(1);
+        sceneTreeCamera.projection_matrix = glm::orthoLH_ZO<float>(0.0f, (float) width, (float) height, 0.0f, 0.0, 30);
+        uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, sceneTreeCamera.matrixBufferPtr(), sizeof(Camera), 1);
+
+        enableBlending(true);
+        // Now render the actual scene tree objects (gameObjects),
+        // for now just dummy rects.
+        auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(32, 32, 1));
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(120, 50, 2)) * rotationMatrix * scaleMatrix;
+        // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
+        uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+
+        bindShaderProgram(editorState.graphics.textShaderProgram);
+        auto textMesh = editorState.textMesh;
+        updateText(*textMesh, editorState.graphics.fontHandle, "Asset Browser");
+        bindVertexArray(textMesh->meshVertexArray);
+        bindTexture(getTextureFromFont(editorState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
+        scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+        worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(24, 18, 1)) *  scaleMatrix;
+        uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+
+        // Blit fb quad to the screen:
+        enableBlending(false);
+        bindDefaultBackbuffer(0, 0, editorState.screen_width, editorState.screen_height);
+        bindVertexArray(editorState.graphics.quadVertexArray);
+        bindShaderProgram(editorState.graphics.shaderProgram);
+        bindFrameBufferTexture(editorState.graphics.frameBufferSceneTree, 0);
+        uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
+        scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1));
+        rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(originX, originY, 2)) * rotationMatrix * scaleMatrix;
+        uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+}
+
+void renderStatusBar(int originX, int originY, int width, int height, EditorState & editorState) {
+    // Render topmenu
+        setFrontCulling(true);
+        bindVertexArray(editorState.graphics.quadVertexArray);
+        bindFrameBuffer(editorState.graphics.frameBufferTopMenu, 0, 0, width, height);
+        clearFrameBuffer(editorState.graphics.frameBufferTopMenu, 0.1, .1, 0.11, 1);
+
+        // Specific projection cam for this panel:
+        Camera cam;
+        cam.view_matrix = glm::mat4(1);
+        cam.projection_matrix = glm::orthoLH_ZO<float>(0.0f, (float) width, (float) height, 0.0f, 0.0, 30);
+        uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, cam.matrixBufferPtr(), sizeof(Camera), 1);
+
+        // Render menu texts
+        enableBlending(true);
+        {
+            // bindShaderProgram(editorState.graphics.textShaderProgram);
+            // auto textMesh = editorState.menuTextMeshes.tmFile;
+            // bindVertexArray(textMesh->meshVertexArray);
+            // bindTexture(getTextureFromFont(editorState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
+            // auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+            // auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(8, 24, 1)) *  scaleMatrix;
+            // uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+            // renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+        }
+
+        // Render frametime status label:
+        {
+            auto textMesh = editorState.textMesh;
+            bindShaderProgram(editorState.graphics.textShaderProgram);
+            updateText(*textMesh, editorState.graphics.fontHandle, "FT(us): " + std::to_string(editorState.frameTimer->getAverage() * 1000 * 1000));
+            bindVertexArray(textMesh->meshVertexArray);
+            bindTexture(getTextureFromFont(editorState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
+            auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+            auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(8, 18, 1)) *  scaleMatrix;
+            uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+            renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+        }
+
+        // Render mouse coordinates:
+        {
+            auto textMesh = editorState.textMesh;
+            bindShaderProgram(editorState.graphics.textShaderProgram);
+            updateText(*textMesh, editorState.graphics.fontHandle, "mouse: " + std::to_string(mouseX()) + "/" + std::to_string(mouseY()));
+            bindVertexArray(textMesh->meshVertexArray);
+            bindTexture(getTextureFromFont(editorState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
+            auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+            auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(editorState.screen_width- 160, 18, 1)) *  scaleMatrix;
+            uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+            renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+        }
 
 
+        // Draw to default backbuffer
+        {
+            enableBlending(false);
+            bindDefaultBackbuffer(0, 0, editorState.screen_width, editorState.screen_height);
+            bindVertexArray(editorState.graphics.quadVertexArray);
+            bindShaderProgram(editorState.graphics.shaderProgram);
+            bindFrameBufferTexture(editorState.graphics.frameBufferTopMenu, 0);
+            uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
+            auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1));
+            auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(originX, originY, 0.9)) * scaleMatrix;
+            //setFrontCulling(false);
+            uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+            renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
 
+        }
+}
 
+void renderPanels(EditorState& editorState) {
+
+    // Here we should know where every panel is, so we can give it its position as arguments.
+    // This is bettter than letting the panel know where it is supposed to be. It normally can not know it.
+    renderTopMenu(editorState.screen_width/2, 16, editorState.screen_width, 32, editorState);
+    renderSceneTree(200/2, 32+ (editorState.screen_height-64)/2, 200, editorState.screen_height-64, editorState);
+    render3DPanel(200, 32 + (editorState.screen_height - 64/2), 200, editorState.screen_height - 64, editorState);
+    renderAssetPanel(editorState.screen_width - 100, 32+ (editorState.screen_height-64)/2, 200, editorState.screen_height-64, editorState);
+    renderStatusBar(editorState.screen_width/2, editorState.screen_height - 16, editorState.screen_width, 32, editorState);
+
+}
+
+void check_menu_inputs(EditorState & editorState) {
+    if (mouseX() > 64 && mouseX() < 200 && mouseY() > 12 && mouseY() < 32) {
+        if (mouseLeftClick()) {
+
+            auto fileName = showFileDialog(L"All\0*.*\0fbx\0*.fbx\0gltf\0*.glb");
+            editorState.meshPool.clear();
+            std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+            std::string fileNameNonWide = converter.to_bytes(fileName);
+            auto importedMeshes = importMeshFromFile(fileNameNonWide);
+            for (auto im : importedMeshes) {
+                auto mesh = im->toMesh();
+                // Now we decide which attributes to link with:
+                // For skeletal meshes with animations we use the gpu vertex skinned version, otherwise the "default one":
+                if (mesh->skeleton != nullptr && mesh->skeleton->animations.size() > 0) {
+                    describeVertexAttributes(editorState.vertexAttributesAnimated, mesh->meshVertexBuffer, editorState.graphics.animatedShaderProgram, mesh->meshVertexArray);
+                } else {
+                    describeVertexAttributes(editorState.vertexAttributes, mesh->meshVertexBuffer, editorState.graphics.shaderProgram, mesh->meshVertexArray);
+                }
+                editorState.meshPool[im->meshName] = mesh;
+            }
+
+            auto heroGo = editorState.gameObjects[0];
+            heroGo->renderData.meshes.clear();
+
+            for (auto mesh : std::ranges::views::values(editorState.meshPool)) {
+                heroGo->renderData.meshes.push_back(mesh);
+
+            }
+            heroGo->transform.position = glm::vec3(0, 0, 0);
+
+        }
+    }
+}
+
+void do_frame(const Win32Window & window, EditorState& editorState) {
+
+    update_camera(editorState);
+    check_menu_inputs(editorState);
+
+    setDepthTesting(true);
+    clear(0, 0.0, 0, 1);
+
+    renderPanels(editorState);
 
     present();
 }
@@ -590,15 +736,15 @@ struct VOutput
     glm::vec2 tex;
 };
 
-void initEditor(GameState& gameState) {
+void initEditor(EditorState& editorState) {
 #ifdef RENDERER_GL46
     gameState.graphics.shaderProgram = createShaderProgram(vshader_glsl, fshader_glsl);
 #endif
 #ifdef RENDERER_DX11
-    gameState.graphics.shaderProgram = createShaderProgram(vshader_hlsl, fshader_hlsl);
-    gameState.graphics.shaderProgram3D = createShaderProgram(vshader_hlsl, fshader_3d_hlsl);
-    gameState.graphics.animatedShaderProgram = createShaderProgram(vshader_hlsl_animated, fshader_hlsl);
-    gameState.graphics.textShaderProgram = createShaderProgram(vshader_hlsl, fs_text_hlsl);
+    editorState.graphics.shaderProgram = createShaderProgram(vshader_hlsl, fshader_hlsl);
+    editorState.graphics.shaderProgram3D = createShaderProgram(vshader_hlsl, fshader_3d_hlsl);
+    editorState.graphics.animatedShaderProgram = createShaderProgram(vshader_hlsl_animated, fshader_hlsl);
+    editorState.graphics.textShaderProgram = createShaderProgram(vshader_hlsl, fs_text_hlsl);
 #endif
 
     std::vector<float> tri_vertices = {
@@ -637,32 +783,38 @@ void initEditor(GameState& gameState) {
                     sizeof(float) * 9 },
     };
 
-    // Prepare text render meshes:
-    gameState.graphics.fontHandle = createFont("assets/consola.ttf", 16);
-    gameState.textMesh = createTextMesh(gameState.graphics.fontHandle, "Test text rendering");
-    gameState.menuTextMeshes.tmFile = createTextMesh(gameState.graphics.fontHandle, "File");
-    gameState.menuTextMeshes.tmGameObjects = createTextMesh(gameState.graphics.fontHandle, "GameObjects");
-    gameState.menuTextMeshes.tmSettings = createTextMesh(gameState.graphics.fontHandle, "Settings");
+    editorState.vertexAttributesAnimated = vertexAttributesAnimated;
+    editorState.vertexAttributes = vertexAttributes;
 
+
+    // Prepare text render meshes:
+    editorState.graphics.fontHandle = createFont("assets/consola.ttf", 16);
+    editorState.textMesh = createTextMesh(editorState.graphics.fontHandle, "Test text rendering");
+    editorState.menuTextMeshes.tmFile = createTextMesh(editorState.graphics.fontHandle, "File");
+    editorState.menuTextMeshes.tmGameObjects = createTextMesh(editorState.graphics.fontHandle, "GameObjects");
+    editorState.menuTextMeshes.tmSettings = createTextMesh(editorState.graphics.fontHandle, "Settings");
+    editorState.menuTextMeshes.tmModelImport = createTextMesh(editorState.graphics.fontHandle, "Import");
 
     // Prepare an offscreen framebuffer for the 3d scene:
-    gameState.graphics.frameBuffer3DPanel = createFrameBuffer(600, 400, true);
-    gameState.graphics.frameBufferTopMenu = createFrameBuffer(800, 32, true);
-    gameState.graphics.frameBufferSceneTree = createFrameBuffer(200, 600-64, true);
+    editorState.graphics.frameBuffer3DPanel = createFrameBuffer(editorState.screen_width - 200 * 2, 400, true);
+    editorState.graphics.frameBufferTopMenu = createFrameBuffer(editorState.screen_width, 32, true);
+    editorState.graphics.frameBufferStatusBar = createFrameBuffer(editorState.screen_width, 32, true);
+    editorState.graphics.frameBufferSceneTree = createFrameBuffer(200, editorState.screen_height-64, true);
+    editorState.graphics.frameBufferAssetPanel = createFrameBuffer(200, editorState.screen_height-64, true);
 
 
     // Mesh import and vertex buffer creation etc.
-    auto importedMeshes = importMeshFromFile("assets/test2.glb");
+    auto importedMeshes = importMeshFromFile("assets/test.glb");
     for (auto im : importedMeshes) {
         auto mesh = im->toMesh();
         // Now we decide which attributes to link with:
         // For skeletal meshes with animations we use the gpu vertex skinned version, otherwise the "default one":
         if (mesh->skeleton != nullptr && mesh->skeleton->animations.size() > 0) {
-            describeVertexAttributes(vertexAttributesAnimated, mesh->meshVertexBuffer, gameState.graphics.animatedShaderProgram, mesh->meshVertexArray);
+            describeVertexAttributes(vertexAttributesAnimated, mesh->meshVertexBuffer, editorState.graphics.animatedShaderProgram, mesh->meshVertexArray);
         } else {
-            describeVertexAttributes(vertexAttributes, mesh->meshVertexBuffer, gameState.graphics.shaderProgram, mesh->meshVertexArray);
+            describeVertexAttributes(vertexAttributes, mesh->meshVertexBuffer, editorState.graphics.shaderProgram, mesh->meshVertexArray);
         }
-        gameState.meshPool[im->meshName] = mesh;
+        editorState.meshPool[im->meshName] = mesh;
     }
 
     // {
@@ -672,66 +824,67 @@ void initEditor(GameState& gameState) {
     // }
 
     // Joint debug mesh import
-    {
-        gameState.graphics.jointDebugMesh =  importMeshFromFile("assets/joint_debug_mesh.glb")[0]->toMesh();
-        describeVertexAttributes(vertexAttributes, gameState.graphics.jointDebugMesh->meshVertexBuffer, gameState.graphics.shaderProgram, gameState.graphics.jointDebugMesh->meshVertexArray);
-
-    }
+    // {
+    //     gameState.graphics.jointDebugMesh =  importMeshFromFile("assets/joint_debug_mesh.glb")[0]->toMesh();
+    //     describeVertexAttributes(vertexAttributes, gameState.graphics.jointDebugMesh->meshVertexBuffer, gameState.graphics.shaderProgram, gameState.graphics.jointDebugMesh->meshVertexArray);
+    //
+    // }
 
     auto heroGo = new GameObject();
-    for (auto mesh : std::ranges::views::values(gameState.meshPool)) {
+    for (auto mesh : std::ranges::views::values(editorState.meshPool)) {
         heroGo->renderData.meshes.push_back(mesh);
+
     }
     heroGo->transform.position = glm::vec3(0, 0, 0);
 
-    gameState.gameObjects.push_back(heroGo);
+    editorState.gameObjects.push_back(heroGo);
 
-    gameState.graphics.quadVertexArray = createVertexArray();
-    bindVertexArray(gameState.graphics.quadVertexArray);
-    gameState.graphics.skinningMatricesCBuffer = createConstantBuffer(sizeof(glm::mat4) * 50);  // TODO have one per skeleton and adjust to the number of actual joints
-    gameState.graphics.objectTransformBuffer = createConstantBuffer(sizeof(glm::mat4));
-    gameState.graphics.cameraTransformBuffer = createConstantBuffer(sizeof(glm::mat4) * 2);
-    gameState.perspectiveCamera = new Camera();
-    gameState.perspectiveCamera->location = {0, 2, -2};
-    gameState.perspectiveCamera->lookAtTarget = {0, 0, 3};
-    gameState.perspectiveCamera->view_matrix =gameState.perspectiveCamera->updateAndGetViewMatrix();
-    gameState.perspectiveCamera->projection_matrix = gameState.perspectiveCamera->updateAndGetPerspectiveProjectionMatrix(65,
-        gameState.screen_width, gameState.screen_height, 0.1, 100);
-        glm::perspectiveFovLH_ZO<float>(glm::radians(65.0f), gameState.screen_width,
-            gameState.screen_height, 0.1, 100);
+    editorState.graphics.quadVertexArray = createVertexArray();
+    bindVertexArray(editorState.graphics.quadVertexArray);
+    editorState.graphics.skinningMatricesCBuffer = createConstantBuffer(sizeof(glm::mat4) * 50);  // TODO have one per skeleton and adjust to the number of actual joints
+    editorState.graphics.objectTransformBuffer = createConstantBuffer(sizeof(glm::mat4));
+    editorState.graphics.cameraTransformBuffer = createConstantBuffer(sizeof(glm::mat4) * 2);
+    editorState.perspectiveCamera = new Camera();
+    editorState.perspectiveCamera->location = {0, 2, -2};
+    editorState.perspectiveCamera->lookAtTarget = {0, 0, 3};
+    editorState.perspectiveCamera->view_matrix =editorState.perspectiveCamera->updateAndGetViewMatrix();
+    editorState.perspectiveCamera->projection_matrix = editorState.perspectiveCamera->updateAndGetPerspectiveProjectionMatrix(65,
+        editorState.screen_width, editorState.screen_height, 0.1, 100);
+        glm::perspectiveFovLH_ZO<float>(glm::radians(65.0f), editorState.screen_width,
+            editorState.screen_height, 0.1, 100);
 
-    gameState.orthoCamera = new Camera();
-    gameState.orthoCamera->view_matrix = glm::mat4(1);
-    gameState.orthoCamera->projection_matrix = (glm::orthoLH_ZO<float>(0, gameState.screen_width,  gameState.screen_height, 0.0f, 0.0, 50));
+    editorState.orthoCamera = new Camera();
+    editorState.orthoCamera->view_matrix = glm::mat4(1);
+    editorState.orthoCamera->projection_matrix = (glm::orthoLH_ZO<float>(0, editorState.screen_width,  editorState.screen_height, 0.0f, 0.0, 50));
 
-    gameState.graphics.quadVertexBuffer = createVertexBuffer(tri_vertices.data(), tri_vertices.size() * sizeof(float), sizeof(float) * 5);
-    associateVertexBufferWithVertexArray(gameState.graphics.quadVertexBuffer, gameState.graphics.quadVertexArray);
-    gameState.graphics.quadIndexBuffer = createIndexBuffer(tri_indices.data(), tri_indices.size() * sizeof(uint32_t));
-    associateIndexBufferWithVertexArray(gameState.graphics.quadIndexBuffer, gameState.graphics.quadVertexArray);
-    describeVertexAttributes(vertexAttributes, gameState.graphics.quadVertexBuffer, gameState.graphics.shaderProgram, gameState.graphics.quadVertexArray);
+    editorState.graphics.quadVertexBuffer = createVertexBuffer(tri_vertices.data(), tri_vertices.size() * sizeof(float), sizeof(float) * 5);
+    associateVertexBufferWithVertexArray(editorState.graphics.quadVertexBuffer, editorState.graphics.quadVertexArray);
+    editorState.graphics.quadIndexBuffer = createIndexBuffer(tri_indices.data(), tri_indices.size() * sizeof(uint32_t));
+    associateIndexBufferWithVertexArray(editorState.graphics.quadIndexBuffer, editorState.graphics.quadVertexArray);
+    describeVertexAttributes(vertexAttributes, editorState.graphics.quadVertexBuffer, editorState.graphics.shaderProgram, editorState.graphics.quadVertexArray);
 
 
     int image_width, image_height;
     auto pixels = load_image("assets/debug_texture.jpg", &image_width, &image_height);
-    gameState.graphics.textureHandle = createTexture(image_width, image_height, pixels, 4);
-    gameState.texturePool["debug_texture"] = gameState.graphics.textureHandle;
+    editorState.graphics.textureHandle = createTexture(image_width, image_height, pixels, 4);
+    editorState.texturePool["debug_texture"] = editorState.graphics.textureHandle;
 
     auto pixelsdj = load_image("assets/debug_joint_texture.png", &image_width, &image_height);
-    gameState.graphics.jointDebugTexture = createTexture(image_width, image_height, pixelsdj, 4);
+    editorState.graphics.jointDebugTexture = createTexture(image_width, image_height, pixelsdj, 4);
 
     pixelsdj = load_image("assets/debug_texture_2.png", &image_width, &image_height);
-    gameState.texturePool["testmesh4_texture"] = createTexture(image_width, image_height, pixelsdj, 4);
+    editorState.texturePool["testmesh4_texture"] = createTexture(image_width, image_height, pixelsdj, 4);
 
     pixelsdj = load_image("assets/Ch15_1002_Diffuse.png", &image_width, &image_height);
-    gameState.texturePool["ch15"] = createTexture(image_width, image_height, pixelsdj, 4);
+    editorState.texturePool["ch15"] = createTexture(image_width, image_height, pixelsdj, 4);
 
 }
 
 
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
-    int width = 800;
-    int height = 600;
+    int width = 1280;
+    int height = 720;
     auto window = Win32Window(hInstance, SW_SHOWDEFAULT, L"my window", width, height);
     initGraphics(window, false, 0);
 
@@ -739,7 +892,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prev_iinst, LPSTR, int) {
     // auto vs = createShader(vshader_code, ShaderType::Vertex);
     // auto fs = createShader(fshader_code, ShaderType::Fragment);
 
-    GameState gameState;
+    EditorState gameState;
     gameState.screen_width = width;
     gameState.screen_height = height;
     initEditor(gameState);

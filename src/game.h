@@ -40,7 +40,7 @@ struct alignas(16) ObjectTransformBuffer {
 
 
 
-struct GameState {
+struct EditorState {
 
     std::map<std::string, Mesh*> meshPool;
     std::map<std::string, GraphicsHandle> texturePool;
@@ -49,6 +49,7 @@ struct GameState {
         Mesh* tmFile;
         Mesh* tmGameObjects;
         Mesh* tmSettings;
+        Mesh* tmModelImport;
     } menuTextMeshes;
 
     struct GraphicsState {
@@ -67,6 +68,7 @@ struct GameState {
         GraphicsHandle frameBufferTopMenu;
         GraphicsHandle frameBufferAssetPanel;
         GraphicsHandle frameBufferSceneTree;
+        GraphicsHandle frameBufferStatusBar;
         GraphicsHandle shaderProgram3D;
 
         GraphicsHandle jointDebugTexture;
@@ -89,6 +91,8 @@ struct GameState {
     uint16_t screen_height;
     Mesh * textMesh = nullptr;      // temporary to hold a test text mesh, for text render tests.
     FrameTimer* frameTimer = nullptr;
+    std::vector<VertexAttributeDescription> vertexAttributesAnimated;
+    std::vector<VertexAttributeDescription> vertexAttributes;
 };
 
 #endif //GAME_H

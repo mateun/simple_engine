@@ -258,6 +258,7 @@ glm::quat aiToGLM(aiQuaternion aiQuat);
 Mesh* createTextMesh(GraphicsHandle fontHandle, const std::string& text);
 MeshData* renderTextIntoQuadGeometry(GraphicsHandle fontHandle, const std::string& text);
 std::vector<MeshData*> importMeshFromFile(const std::string& fileName);
+std::wstring showFileDialog(const std::wstring& typeFilter);
 
 void initGraphics(Win32Window& window, bool msaa, int msaa_samples);
 void clear(float r, float g, float b, float a);
@@ -297,6 +298,10 @@ void gl_clear(float r, float g, float b, float a);
 void gl_init(HWND hwnd, bool msaa, int msaa_samples);
 
 
+
+int mouseX();
+int mouseY();
+bool mouseLeftClick();
 bool isKeyDown(int key);
 
 #include <Windows.h>

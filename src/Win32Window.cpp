@@ -2,10 +2,30 @@
 
 #include <map>
 #include <string>
+#include <windowsx.h>
 
+static bool lbuttonDown = false;
+static bool lbuttonUp = false;
+static int mouse_x = 0;
+static int mouse_y = 0;
+static bool useMouse = true;
 static int timer_token_counter = 0;
 std::map<int, LARGE_INTEGER> timer_tokens;
 static WPARAM last_key_press_ = 0;
+
+bool winLeftMouseUp() {
+    return lbuttonUp;
+}
+
+int winMouseX() {
+    return mouse_x;
+}
+
+int winMouseY() {
+    return mouse_y;
+}
+
+
 
 WPARAM last_key_press() {
     return last_key_press_;
@@ -38,6 +58,22 @@ LRESULT CALLBACK Win32Window::wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
         case WM_SYSKEYDOWN:
         case WM_KEYDOWN:
             last_key_press_ = wParam;
+            break;
+
+        case WM_MOUSEMOVE:
+            if (useMouse) {
+                mouse_x = GET_X_LPARAM(lParam);
+                mouse_y = GET_Y_LPARAM(lParam);
+            }
+            break;
+
+        case WM_LBUTTONDOWN:
+            lbuttonDown = true;
+            break;
+
+        case WM_LBUTTONUP:
+            lbuttonUp = true;
+            lbuttonDown = false;
             break;
 
         case WM_DESTROY:
@@ -132,6 +168,9 @@ Win32Window::~Win32Window() {
 
 bool Win32Window::process_messages() {
     last_key_press_ = 0;
+    lbuttonDown = false;
+    lbuttonUp = false;
+
     MSG msg;
     while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
         if (msg.message == WM_QUIT)
@@ -140,4 +179,35 @@ bool Win32Window::process_messages() {
         DispatchMessageW(&msg);
     }
     return true;
-} 
+}
+
+
+std::wstring showFileDialog(const std::wstring& typeFilter) {
+    OPENFILENAME ofn;       // Common dialog box structure
+    wchar_t szFile[260] = {0}; // Buffer for file name
+    HWND hwnd = NULL;       // Owner window
+    HANDLE hf;              // File handle
+
+    // Initialize OPENFILENAME
+    ZeroMemory(&ofn, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hwnd;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = sizeof(szFile);
+    ofn.lpstrFilter = typeFilter.c_str();
+    ofn.nFilterIndex = 1;
+    ofn.lpstrFileTitle = NULL;
+    ofn.nMaxFileTitle = 0;
+    ofn.lpstrInitialDir = NULL;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+    // Display the Open dialog box
+    if (GetOpenFileName(&ofn) == TRUE) {
+        std::wcout << "Selected file: " << ofn.lpstrFile << std::endl;
+        return ofn.lpstrFile;
+
+    } else {
+        std::cout << "No file selected or operation canceled." << std::endl;
+        return L"";
+    }
+}

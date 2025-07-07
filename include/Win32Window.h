@@ -1,7 +1,10 @@
 #pragma once
 
+#include <iostream>
+#include <ostream>
 #include <string>
 #include <windows.h>
+#include <shobjidl.h>
 
 struct TimerToken {
     int token;
@@ -40,3 +43,5 @@ private:
     LARGE_INTEGER performanceFreq_;
 
 };
+
+

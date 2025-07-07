@@ -28,7 +28,12 @@ Mesh * MeshData::toMesh() {
     mesh->meshVertexArray = createVertexArray();
     mesh->materialName = materialName;
     mesh->diffuseTexturePath = diffuseTexturePath;
-    mesh->diffuseTexture = diffuseTexture;
+    if (diffuseTexture.id != -1) {
+        mesh->diffuseTexture = diffuseTexture;
+    } else {
+        mesh->diffuseTexture = diffuseTexturePath.empty() ? GraphicsHandle{-1} : createTextureFromFile(diffuseTexturePath);
+    }
+
     mesh->normalMapPath = normalMapPath;
 
     // Decide on the vertex layout.
@@ -83,7 +88,7 @@ Mesh * MeshData::toMesh() {
     mesh->jointIndices = jointIndices;
     mesh->jointWeights = jointWeights;
     mesh->name = meshName;
-    mesh->diffuseTexture = diffuseTexturePath.empty() ? GraphicsHandle{-1} : createTextureFromFile(diffuseTexturePath);
+
     return mesh;
 }
 
