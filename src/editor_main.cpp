@@ -3,7 +3,7 @@
 #include <engine.h>
 #define GRAPHICS_IMPLEMENTATION
 #include <engine.h>
-#include "game.h"
+#include "editor.h"
 #include <vector>
 #define STB_IMAGE_IMPLEMENTATION
 #include <codecvt>
@@ -215,14 +215,13 @@ void renderSceneTree(int originX, int originY, int width, int height, EditorStat
 }
 
 
-
 void render3DPanel(int originX, int originY, int width, int height, EditorState & editorState) {
     // Render 3D scene, first into framebuffer, then as quad on to the final backbuffer.
     setFrontCulling(false);
 
     bindShaderProgram(editorState.graphics.shaderProgram3D);
     bindFrameBuffer(editorState.graphics.frameBuffer3DPanel, 0, 0, width, height);
-    clearFrameBuffer(editorState.graphics.frameBuffer3DPanel, .04, .0, 0.0, 1);
+    clearFrameBuffer(editorState.graphics.frameBuffer3DPanel, .0, .0, 0.0, 1);
     uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.perspectiveCamera->matrixBufferPtr(), sizeof(glm::mat4) * 2, 1);
 
     // Animation timing
@@ -361,12 +360,12 @@ void render3DPanel(int originX, int originY, int width, int height, EditorState 
 }
 
 void renderAssetPanel(int originX, int originY, int width, int height, EditorState & editorState) {
-      setFrontCulling(true);
+        setFrontCulling(true);
         bindVertexArray(editorState.graphics.quadVertexArray);
         bindShaderProgram(editorState.graphics.shaderProgram);
         bindFrameBuffer(editorState.graphics.frameBufferSceneTree, 0, 0, width, height);
         clearFrameBuffer(editorState.graphics.frameBufferSceneTree, .1, .1, 0.1, 1);
-        bindTexture(editorState.graphics.textureHandle, 0);
+
         Camera sceneTreeCamera;
         sceneTreeCamera.view_matrix = glm::mat4(1);
         sceneTreeCamera.projection_matrix = glm::orthoLH_ZO<float>(0.0f, (float) width, (float) height, 0.0f, 0.0, 30);
@@ -374,10 +373,16 @@ void renderAssetPanel(int originX, int originY, int width, int height, EditorSta
 
         enableBlending(true);
         // Now render the actual scene tree objects (gameObjects),
-        // for now just dummy rects.
+        // for now just fake rects.
+        // Store actually imported meshes and then iterate them and draw a thumbnail for each of them:
+        // for (auto go : editorState.importedMeshes) {
+        //
+        // }
+        auto thumbnailTexture = editorState.gameObjects[0]->renderData.meshes[0]->thumbnail;
+        bindTexture(thumbnailTexture, 0);
         auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(32, 32, 1));
-        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(120, 50, 2)) * rotationMatrix * scaleMatrix;
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(128, 128, 1));
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(72, 100, 2)) * rotationMatrix * scaleMatrix;
         // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
         uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
@@ -496,9 +501,11 @@ void check_menu_inputs(EditorState & editorState) {
             editorState.meshPool.clear();
             std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
             std::string fileNameNonWide = converter.to_bytes(fileName);
-            auto importedMeshes = importMeshFromFile(fileNameNonWide);
-            for (auto im : importedMeshes) {
+            auto importedMeshDataItems = importMeshFromFile(fileNameNonWide);
+            auto thumbnailTexture = createThumbnailForMesh(importedMeshDataItems, editorState.graphics.shaderProgram3D, editorState.graphics.objectTransformBuffer, editorState.graphics.cameraTransformBuffer, editorState.vertexAttributes, 128, 128);
+            for (auto im : importedMeshDataItems) {
                 auto mesh = im->toMesh();
+                mesh->thumbnail = thumbnailTexture;
                 // Now we decide which attributes to link with:
                 // For skeletal meshes with animations we use the gpu vertex skinned version, otherwise the "default one":
                 if (mesh->skeleton != nullptr && mesh->skeleton->animations.size() > 0) {
@@ -786,7 +793,6 @@ void initEditor(EditorState& editorState) {
     editorState.vertexAttributesAnimated = vertexAttributesAnimated;
     editorState.vertexAttributes = vertexAttributes;
 
-
     // Prepare text render meshes:
     editorState.graphics.fontHandle = createFont("assets/consola.ttf", 16);
     editorState.textMesh = createTextMesh(editorState.graphics.fontHandle, "Test text rendering");
@@ -802,11 +808,18 @@ void initEditor(EditorState& editorState) {
     editorState.graphics.frameBufferSceneTree = createFrameBuffer(200, editorState.screen_height-64, true);
     editorState.graphics.frameBufferAssetPanel = createFrameBuffer(200, editorState.screen_height-64, true);
 
+    // Create constant buffers:
+    editorState.graphics.skinningMatricesCBuffer = createConstantBuffer(sizeof(glm::mat4) * 50);  // TODO have one per skeleton and adjust to the number of actual joints
+    editorState.graphics.objectTransformBuffer = createConstantBuffer(sizeof(glm::mat4));
+    editorState.graphics.cameraTransformBuffer = createConstantBuffer(sizeof(glm::mat4) * 2);
 
     // Mesh import and vertex buffer creation etc.
     auto importedMeshes = importMeshFromFile("assets/test.glb");
+    auto thumbnailTexture = createThumbnailForMesh(importedMeshes, editorState.graphics.shaderProgram3D,
+        editorState.graphics.objectTransformBuffer, editorState.graphics.cameraTransformBuffer, editorState.vertexAttributes, 128, 128);
     for (auto im : importedMeshes) {
         auto mesh = im->toMesh();
+        mesh->thumbnail = thumbnailTexture;
         // Now we decide which attributes to link with:
         // For skeletal meshes with animations we use the gpu vertex skinned version, otherwise the "default one":
         if (mesh->skeleton != nullptr && mesh->skeleton->animations.size() > 0) {
@@ -841,17 +854,15 @@ void initEditor(EditorState& editorState) {
 
     editorState.graphics.quadVertexArray = createVertexArray();
     bindVertexArray(editorState.graphics.quadVertexArray);
-    editorState.graphics.skinningMatricesCBuffer = createConstantBuffer(sizeof(glm::mat4) * 50);  // TODO have one per skeleton and adjust to the number of actual joints
-    editorState.graphics.objectTransformBuffer = createConstantBuffer(sizeof(glm::mat4));
-    editorState.graphics.cameraTransformBuffer = createConstantBuffer(sizeof(glm::mat4) * 2);
+
     editorState.perspectiveCamera = new Camera();
     editorState.perspectiveCamera->location = {0, 2, -2};
     editorState.perspectiveCamera->lookAtTarget = {0, 0, 3};
     editorState.perspectiveCamera->view_matrix =editorState.perspectiveCamera->updateAndGetViewMatrix();
     editorState.perspectiveCamera->projection_matrix = editorState.perspectiveCamera->updateAndGetPerspectiveProjectionMatrix(65,
         editorState.screen_width, editorState.screen_height, 0.1, 100);
-        glm::perspectiveFovLH_ZO<float>(glm::radians(65.0f), editorState.screen_width,
-            editorState.screen_height, 0.1, 100);
+        // glm::perspectiveFovLH_ZO<float>(glm::radians(65.0f), editorState.screen_width,
+        //     editorState.screen_height, 0.1, 100);
 
     editorState.orthoCamera = new Camera();
     editorState.orthoCamera->view_matrix = glm::mat4(1);

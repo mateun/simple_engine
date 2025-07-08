@@ -269,6 +269,7 @@ GraphicsHandle getTextureFromFont(GraphicsHandle fontHandle) {
 }
 
 
+
 MeshData* renderTextIntoQuadGeometry(GraphicsHandle fontHandle, const std::string& text) {
 
         MeshData* meshData = new MeshData();

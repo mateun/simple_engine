@@ -6,7 +6,7 @@
 #include <cassert>
 #include <engine.h>
 #include <Windows.h>
-#include <d3d11.h>
+#include <d3d11_1.h>
 #include <d3dcompiler.h>
 #include <DirectXMath.h>
 #include <dxgi.h>
@@ -16,6 +16,9 @@
 #include <vector>
 #include <ostream>
 #include <stb_image.h>
+
+#include "glm/ext/matrix_transform.hpp"
+#include "glm/gtc/type_ptr.hpp"
 
 static ID3D11Device *device;
 static ID3D11DeviceContext *ctx;
@@ -35,6 +38,22 @@ static ID3D11RasterizerState* rasterStateSolid = nullptr;
 static ID3D11RasterizerState* rasterStateWireframe = nullptr;
 static ID3D11RasterizerState * rasterStateFrontCounter = nullptr;
 static GraphicsHandle defaultTextShaderProgram = {};
+
+static GraphicsHandle thumbnailFrameBuffer = {-1};
+
+struct OffscreenRenderTarget {
+    ID3D11Texture2D* texture = nullptr;
+    GraphicsHandle textureHandle = {-1};
+    ID3D11RenderTargetView* rtv = nullptr;
+    ID3D11ShaderResourceView* srv = nullptr;
+    ID3D11Texture2D* depthTexture = nullptr;
+    ID3D11DepthStencilView* dsv = nullptr;
+    int width = 0;
+    int height = 0;
+
+    void release(); // cleanup
+};
+
 
 struct BufferWrapper {
     ID3D11Buffer* buffer;
@@ -67,17 +86,6 @@ struct DX11Texture {
     ID3D11DepthStencilView* dsv;
 };
 
-struct OffscreenRenderTarget {
-    ID3D11Texture2D* texture = nullptr;
-    ID3D11RenderTargetView* rtv = nullptr;
-    ID3D11ShaderResourceView* srv = nullptr;
-    ID3D11Texture2D* depthTexture = nullptr;
-    ID3D11DepthStencilView* dsv = nullptr;
-    int width = 0;
-    int height = 0;
-
-    void release(); // cleanup
-};
 
 
 
@@ -346,7 +354,6 @@ DXGI_FORMAT getFormatByChannelNumber(int num_channels) {
 }
 
 GraphicsHandle createTexture(int width, int height, uint8_t *pixels, uint8_t num_channels) {
-    assert(pixels != nullptr);
     ID3D11Texture2D *texture;
     D3D11_TEXTURE2D_DESC desc;
     ZeroMemory(&desc, sizeof(D3D11_TEXTURE2D_DESC));
@@ -360,13 +367,24 @@ GraphicsHandle createTexture(int width, int height, uint8_t *pixels, uint8_t num
     desc.ArraySize = 1;
     desc.SampleDesc.Count = 1;
     desc.SampleDesc.Quality = 0;
-    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    D3D11_SUBRESOURCE_DATA initialData = {};
-    initialData.pSysMem = pixels;
-    initialData.SysMemPitch = width * num_channels;        // This is only true for 4 byte colors
-    initialData.SysMemSlicePitch = 0;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
 
-    HRESULT res = device->CreateTexture2D(&desc, &initialData, &texture);
+    D3D11_SUBRESOURCE_DATA initialData = {};
+
+    if (pixels) {
+        initialData.pSysMem = pixels;
+        initialData.SysMemPitch = width * num_channels;        // This is only true for 4 byte colors
+        initialData.SysMemSlicePitch = 0;
+    }
+
+    HRESULT res = 0;
+    if (pixels) {
+         res = device->CreateTexture2D(&desc, &initialData, &texture);
+    } else {
+        res = device->CreateTexture2D(&desc, nullptr, &texture);
+    }
+
+
     if (FAILED(res)) {
         std::cerr << "texture creation failed" << std::endl;
         exit(1);
@@ -470,6 +488,12 @@ void updateBuffer(GraphicsHandle bufferHandle, BufferType bufferType, void* data
     memcpy(mapped.pData, data, size_in_bytes);
     ctx->Unmap(buffer, 0);
 
+}
+
+void copyTexture(GraphicsHandle targetTexture, GraphicsHandle sourceTexture) {
+    auto target = textureMap[targetTexture.id];
+    auto source = textureMap[sourceTexture.id];
+    ctx->CopyResource(target.texture, source.texture);
 }
 
 void setFrontCulling(bool front) {
@@ -847,6 +871,8 @@ GraphicsHandle createFrameBuffer(int width, int height, bool includeDepthBuffer)
     device->CreateRenderTargetView(rt.texture, nullptr, &rt.rtv);
     device->CreateShaderResourceView(rt.texture, nullptr, &rt.srv);
 
+
+
     if (includeDepthBuffer) {
         D3D11_TEXTURE2D_DESC depthDesc = {};
         depthDesc.Width = width;
@@ -873,9 +899,93 @@ GraphicsHandle createFrameBuffer(int width, int height, bool includeDepthBuffer)
         }
     }
 
+    rt.textureHandle = { nextHandleId++ };
+    textureMap[rt.textureHandle.id] = { rt.texture, rt.srv, rt.rtv, rt.dsv};
+
     GraphicsHandle handle = {nextHandleId++};
     frameBufferMap[handle.id] = rt;
     return handle;
+
+}
+
+
+GraphicsHandle getTextureFromFrameBuffer(GraphicsHandle frameBufferHandle) {
+    auto fb = frameBufferMap[frameBufferHandle.id];
+    return fb.textureHandle;
+}
+
+GraphicsHandle createThumbnailForMesh(std::vector<MeshData*> meshDataItems, GraphicsHandle shaderProgramHandle,
+    GraphicsHandle objectTransformBuffer, GraphicsHandle cameraTransformBuffer, std::vector<VertexAttributeDescription> vertexAttributes,
+     int width, int height) {
+
+    ID3DUserDefinedAnnotation* annotation;
+    ctx->QueryInterface(__uuidof(ID3DUserDefinedAnnotation),
+                       reinterpret_cast<void**>(&annotation));
+    annotation->BeginEvent(L"Thumbnail rendering");
+
+    setFrontCulling(false);
+
+    if (thumbnailFrameBuffer.id == -1) {
+        thumbnailFrameBuffer = createFrameBuffer(width, height, true);
+    }
+
+    bindShaderProgram(shaderProgramHandle);
+    bindFrameBuffer(thumbnailFrameBuffer, 0, 0, width, height);
+    clearFrameBuffer(thumbnailFrameBuffer, .0, .04, 0.04, 1);
+
+    auto thumbnailCamera = new Camera();
+    thumbnailCamera->location = {0, 2, -2};
+    thumbnailCamera->lookAtTarget = {0, 0, 3};
+    thumbnailCamera->view_matrix =thumbnailCamera->updateAndGetViewMatrix();
+    thumbnailCamera->projection_matrix = thumbnailCamera->updateAndGetPerspectiveProjectionMatrix(65,
+        width, height, 0.1, 100);
+    uploadConstantBufferData( cameraTransformBuffer, thumbnailCamera->matrixBufferPtr(), sizeof(glm::mat4) * 2, 1);
+
+    // Render each (sub)-mesh into our common thumbnail buffer:
+    for (auto meshData : meshDataItems) {
+        auto mesh = meshData->toMesh();
+        describeVertexAttributes(vertexAttributes, mesh->meshVertexBuffer, shaderProgramHandle, mesh->meshVertexArray);
+        bindVertexArray(mesh->meshVertexArray);
+
+
+        if (mesh->diffuseTexture.id != -1) {
+            bindTexture(mesh->diffuseTexture, 0);
+        }
+
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+        auto worldMatrix = glm::translate(glm::mat4(1.0f),{0, 0, 0}) * scaleMatrix;
+        uploadConstantBufferData( objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, mesh->index_count, 0);
+    }
+
+
+    ID3D11Query* query;
+    D3D11_QUERY_DESC queryDesc = {};
+    queryDesc.Query = D3D11_QUERY_EVENT;
+    device->CreateQuery(&queryDesc, &query);
+
+
+
+
+    auto fbTexture = getTextureFromFrameBuffer(thumbnailFrameBuffer);
+    // auto targetTexture = createTextureFromFile("assets/debug_texture.jpg");
+    auto targetTexture = createTexture(width, height, nullptr, 4);
+    ID3D11DeviceChild* tex = textureMap[targetTexture.id].texture;
+    auto name = "thumbnailTexture";
+    tex->SetPrivateData(WKPDID_D3DDebugObjectName, (UINT)strlen("thumbnailTexture") + 1, name);
+    copyTexture(targetTexture, fbTexture);
+    ctx->Flush();
+
+    ctx->End(query);
+
+    BOOL queryData;
+    while (ctx->GetData(query, &queryData, sizeof(BOOL), 0) == S_FALSE) {
+        // Wait for GPU to complete
+    }
+    query->Release();
+    annotation->EndEvent();
+
+    return targetTexture;
 
 }
 

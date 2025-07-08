@@ -13,6 +13,8 @@
 #include "engine.h"
 #include "stb_image.h"
 #include "glm/gtc/type_ptr.hpp"
+#include "editor.h"
+#include "glm/gtx/quaternion.hpp"
 
 static glm::mat4 matrixAssimpToGLM(const aiMatrix4x4& from) {
 
@@ -54,16 +56,18 @@ bool isAnimatedJoint(const std::string& name, const aiScene* scene) {
 }
 
 
+
+
 std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
     Assimp::Importer importer;
     auto scene = importer.ReadFile(fileName, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_FlipUVs | aiProcess_LimitBoneWeights | aiProcess_CalcTangentSpace);
     assert(scene != nullptr);
 
-    std::vector<MeshData*> meshImportDatas;
+    std::vector<MeshData*> meshImportItems;
     for (int meshIndex = 0; meshIndex < scene->mNumMeshes; meshIndex++) {
         auto mesh = scene->mMeshes[meshIndex];
         auto meshImportData = new MeshData();
-        meshImportDatas.push_back(meshImportData);
+        meshImportItems.push_back(meshImportData);
 
         // Material linkage:
         auto ai_material = scene->mMaterials[mesh->mMaterialIndex];
@@ -322,7 +326,7 @@ std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
             }
         }
     }
-    return meshImportDatas;
+    return meshImportItems;
 
 }
 

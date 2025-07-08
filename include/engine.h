@@ -145,17 +145,19 @@ struct Mesh {
     GraphicsHandle meshVertexBuffer;
     GraphicsHandle meshIndexBuffer;
     GraphicsHandle meshVertexArray;
+    GraphicsHandle thumbnail = {-1};
+    GraphicsHandle diffuseTexture = {-1};
+    GraphicsHandle normalTexture;
+
     std::vector<glm::vec3> positions;
     std::vector<glm::vec2> uvs;
-    uint32_t index_count;
-    Skeleton* skeleton = nullptr;
     std::vector<glm::vec4> jointIndices;
     std::vector<glm::vec4> jointWeights;
+    uint32_t index_count;
+    Skeleton* skeleton = nullptr;
     std::string name;
     std::string materialName;
-    GraphicsHandle diffuseTexture = {-1};
     std::string diffuseTexturePath;
-    GraphicsHandle normalTexture;
     std::string normalMapPath;
 
 };
@@ -240,9 +242,11 @@ private:
 };
 
 
+struct EditorState;
 GraphicsHandle createFont(const std::string& fontName, int fontSize);
 GraphicsHandle createTexture(int width, int height, uint8_t* pixels, uint8_t num_channels);
 GraphicsHandle createTextureFromFile(const std::string& diffuseTexturePath);
+GraphicsHandle createThumbnailForMesh(std::vector<MeshData*> meshDataItems, GraphicsHandle shaderProgram, GraphicsHandle objectTransformBuffer, GraphicsHandle cameraTransformBuffer, std::vector<VertexAttributeDescription> vertexAttributes, int width, int height);
 GraphicsHandle createShader(const std::string& code, ShaderType type);
 GraphicsHandle createShaderProgram(const std::string& vsCode, const std::string& fsCode);
 GraphicsHandle createVertexBuffer(void* data, int size, uint32_t stride=0, BufferUsage usage = BufferUsage::Static);
@@ -250,6 +254,7 @@ GraphicsHandle createConstantBuffer(uint32_t size);
 GraphicsHandle createIndexBuffer(void* data, int size, BufferUsage usage = BufferUsage::Static);
 GraphicsHandle createVertexArray();
 GraphicsHandle getTextureFromFont(GraphicsHandle fontHandle);
+GraphicsHandle getTextureFromFrameBuffer(GraphicsHandle frameBufferHandle);
 GraphicsHandle getDefaultTextShaderProgram();
 GraphicsHandle createFrameBuffer(int width, int height, bool includeDepthBuffer = false);
 StartEndKeyFrame getStartEndKeyFrameForTime(float time, Animation* animation, KeyFrameType type, std::string jointName);
@@ -277,6 +282,7 @@ void uploadConstantBufferData(GraphicsHandle bufferHandle, void* data, uint32_t 
 void renderGeometry(PrimitiveType primitiveType);
 void updateText(Mesh& textMesh, GraphicsHandle fontHandle, const std::string& text);
 void updateBuffer(GraphicsHandle bufferHandle, BufferType bufferType, void* data, uint32_t size_in_bytes);
+void copyTexture(GraphicsHandle targetTexture, GraphicsHandle sourceTexture);
 void setFillMode(FillMode mode);
 void setFrontCulling(bool front);
 void setDepthTesting(bool on);
