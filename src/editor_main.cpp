@@ -93,6 +93,15 @@ void update_camera(EditorState& gameState) {
 
 }
 
+Camera activateOrthoCameraForPanel(int width, int height, EditorState& editorState) {
+    // Specific projection cam for this panel:
+    Camera cam;
+    cam.view_matrix = glm::mat4(1);
+    cam.projection_matrix = glm::orthoLH_ZO<float>(0.0f, (float) width, (float) height, 0.0f, 0.0, 30);
+    uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, cam.matrixBufferPtr(), sizeof(Camera), 1);
+    return cam;
+}
+
 void renderTopMenu(int originX, int originY, int width, int height, EditorState& gameState) {
     {
         // Render topmenu
@@ -372,28 +381,42 @@ void renderAssetPanel(int originX, int originY, int width, int height, EditorSta
         uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, sceneTreeCamera.matrixBufferPtr(), sizeof(Camera), 1);
 
         enableBlending(true);
-        // Now render the actual scene tree objects (gameObjects),
-        // for now just fake rects.
-        // Store actually imported meshes and then iterate them and draw a thumbnail for each of them:
-        // for (auto go : editorState.importedMeshes) {
-        //
-        // }
-        auto thumbnailTexture = editorState.gameObjects[0]->renderData.meshes[0]->thumbnail;
-        bindTexture(thumbnailTexture, 0);
-        auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(128, 128, 1));
-        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(72, 100, 2)) * rotationMatrix * scaleMatrix;
-        // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
-        uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+        // Render the assets:
+        int meshIndex = 0;
+        int verticalSize = 128;
+        int horizontalSize = 128;
+        float marginLeft = horizontalSize/2 + 24;
+        for (auto meshGroup : editorState.importedMeshGroups) {
+            int verticalOffset = 40 + verticalSize/2 + 144 * meshIndex++;
+            auto thumbnailTexture = meshGroup->meshes[0]->thumbnail;
+            bindTexture(thumbnailTexture, 0);
+            auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(128, 128, 1));
+            auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(marginLeft, verticalOffset, 2)) * rotationMatrix * scaleMatrix;
+
+            uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+            renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+
+            if (editorState.hoveredAssetIndex == meshIndex-1) {
+                bindTexture(editorState.texturePool["gray_bg"], 0);
+                auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+                auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(134, 134, 1));
+                auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(marginLeft-2, verticalOffset-2, 2.5)) * rotationMatrix * scaleMatrix;
+                uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+                renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+            }
+        }
+
+
+
 
         bindShaderProgram(editorState.graphics.textShaderProgram);
         auto textMesh = editorState.textMesh;
         updateText(*textMesh, editorState.graphics.fontHandle, "Asset Browser");
         bindVertexArray(textMesh->meshVertexArray);
         bindTexture(getTextureFromFont(editorState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
-        scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
-        worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(24, 18, 1)) *  scaleMatrix;
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(24, 18, 1)) *  scaleMatrix;
         uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
 
@@ -405,7 +428,7 @@ void renderAssetPanel(int originX, int originY, int width, int height, EditorSta
         bindFrameBufferTexture(editorState.graphics.frameBufferSceneTree, 0);
         uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
         scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1));
-        rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(originX, originY, 2)) * rotationMatrix * scaleMatrix;
         uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
@@ -481,16 +504,106 @@ void renderStatusBar(int originX, int originY, int width, int height, EditorStat
         }
 }
 
+void renderMainTabPanel(int originX, int originY, int width, int height, EditorState & editorState) {
+
+    setFrontCulling(true);
+    bindVertexArray(editorState.graphics.quadVertexArray);
+    bindFrameBuffer(editorState.graphics.frameBufferMainTabPanel, 0, 0, width, height);
+    clearFrameBuffer(editorState.graphics.frameBufferMainTabPanel, 0.0, .0, 0.0, 1);
+
+    activateOrthoCameraForPanel(width, height, editorState);
+
+    // First render all tab headers.
+    // Each tab-header is a rect with the name of the file/resource it is displaying/editing.
+    // Tabs consist of a header and a body.
+    // Only the body of the currently active tab is rendered.
+    enableBlending(true);
+
+    int accumulatedTextLength = 0;
+    for (auto tab : editorState.mainTabs) {
+
+        int horizontalOffset = 8 + accumulatedTextLength;
+        auto textMesh = tab->tabHeader.titleTextMesh;
+        auto titleBoundingBox = measureText(editorState.graphics.fontHandle, tab->tabHeader.title);
+        auto titleWidth = titleBoundingBox.right - titleBoundingBox.left;
+        accumulatedTextLength += titleWidth + 24;
+
+
+        // The background rectangle:
+        enableBlending(false);
+        bindVertexArray(editorState.graphics.quadVertexArray);
+        bindShaderProgram(editorState.graphics.shaderProgram);
+        bindTexture(editorState.texturePool["gray_bg"], 0);
+        // auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(titleWidth+16, 32, 1));
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(horizontalOffset-4 + (titleWidth/2) + 4, 16, 2)) * scaleMatrix;
+        uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+
+        // Render the title text:
+        enableBlending(true);
+        bindShaderProgram(editorState.graphics.textShaderProgram);
+        bindVertexArray(textMesh->meshVertexArray);
+        bindTexture(getTextureFromFont(editorState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
+        worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(horizontalOffset, 20, 1));
+        uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+    }
+
+    // Separation line at the end of the tab header:
+    {
+        enableBlending(false);
+        bindVertexArray(editorState.graphics.quadVertexArray);
+        bindShaderProgram(editorState.graphics.shaderProgram);
+        bindTexture(editorState.texturePool["gray_bg"], 0);
+        // auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, 2, 1));
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(editorState.screen_width/2 , 31, 2)) * scaleMatrix;
+        uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+    }
+
+    enableBlending(false);
+    bindDefaultBackbuffer(0, 0, editorState.screen_width, editorState.screen_height);
+    bindVertexArray(editorState.graphics.quadVertexArray);
+    bindShaderProgram(editorState.graphics.shaderProgram);
+    bindFrameBufferTexture(editorState.graphics.frameBufferMainTabPanel, 0);
+    uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
+    auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1));
+    auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(originX, originY, 0.9)) * scaleMatrix;
+    //setFrontCulling(false);
+    uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+    renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+
+
+
+}
+
 void renderPanels(EditorState& editorState) {
 
     // Here we should know where every panel is, so we can give it its position as arguments.
     // This is bettter than letting the panel know where it is supposed to be. It normally can not know it.
     renderTopMenu(editorState.screen_width/2, 16, editorState.screen_width, 32, editorState);
     renderSceneTree(200/2, 32+ (editorState.screen_height-64)/2, 200, editorState.screen_height-64, editorState);
-    render3DPanel(200, 32 + (editorState.screen_height - 64/2), editorState.screen_width - 400, editorState.screen_height - 64, editorState);
+    renderMainTabPanel(editorState.screen_width/2, 32 + 16, editorState.screen_width - 400, 32, editorState);
+    render3DPanel(200, 32 + (editorState.screen_height - 96/2), editorState.screen_width - 400, editorState.screen_height - 96, editorState);
     renderAssetPanel(editorState.screen_width - 100, 32+ (editorState.screen_height-64)/2, 200, editorState.screen_height-64, editorState);
     renderStatusBar(editorState.screen_width/2, editorState.screen_height - 16, editorState.screen_width, 32, editorState);
 
+}
+
+void check_asset_browser_inputs(EditorState & editorState) {
+    int topOffset = 72;
+    int vSize = 128;
+    int vMargin = 16;
+    if (mouseX() > editorState.screen_width - 184 && mouseX() < editorState.screen_width - 16 &&
+        mouseY() > 32 && mouseY() < editorState.screen_height - 32) {
+
+        float assetIndexWithMargin  = (mouseY() - topOffset) / (vSize + vMargin);
+        editorState.hoveredAssetIndex = assetIndexWithMargin;
+        //std::cout << "mouse over asset browser at index: " << std::to_string(assetIndex) << std::endl;
+
+    }
 }
 
 void check_menu_inputs(EditorState & editorState) {
@@ -503,6 +616,7 @@ void check_menu_inputs(EditorState & editorState) {
             std::string fileNameNonWide = converter.to_bytes(fileName);
             auto importedMeshDataItems = importMeshFromFile(fileNameNonWide);
             auto thumbnailTexture = createThumbnailForMesh(importedMeshDataItems, editorState.graphics.shaderProgram3D, editorState.graphics.objectTransformBuffer, editorState.graphics.cameraTransformBuffer, editorState.vertexAttributes, 128, 128);
+            auto meshGroup = new MeshGroup();
             for (auto im : importedMeshDataItems) {
                 auto mesh = im->toMesh();
                 mesh->thumbnail = thumbnailTexture;
@@ -514,7 +628,9 @@ void check_menu_inputs(EditorState & editorState) {
                     describeVertexAttributes(editorState.vertexAttributes, mesh->meshVertexBuffer, editorState.graphics.shaderProgram, mesh->meshVertexArray);
                 }
                 editorState.meshPool[im->meshName] = mesh;
+                meshGroup->meshes.push_back(mesh);
             }
+            editorState.importedMeshGroups.push_back(meshGroup);
 
             auto heroGo = editorState.gameObjects[0];
             heroGo->renderData.meshes.clear();
@@ -533,6 +649,7 @@ void do_frame(const Win32Window & window, EditorState& editorState) {
 
     update_camera(editorState);
     check_menu_inputs(editorState);
+    check_asset_browser_inputs(editorState);
 
     setDepthTesting(true);
     clear(0, 0.0, 0, 1);
@@ -745,7 +862,7 @@ struct VOutput
 
 void initEditor(EditorState& editorState) {
 #ifdef RENDERER_GL46
-    gameState.graphics.shaderProgram = createShaderProgram(vshader_glsl, fshader_glsl);
+    editorState.graphics.shaderProgram = createShaderProgram(vshader_glsl, fshader_glsl);
 #endif
 #ifdef RENDERER_DX11
     editorState.graphics.shaderProgram = createShaderProgram(vshader_hlsl, fshader_hlsl);
@@ -803,6 +920,7 @@ void initEditor(EditorState& editorState) {
 
     // Prepare an offscreen framebuffer for the 3d scene:
     editorState.graphics.frameBuffer3DPanel = createFrameBuffer(editorState.screen_width - 200 * 2, editorState.screen_height - 64, true);
+    editorState.graphics.frameBufferMainTabPanel = createFrameBuffer(editorState.screen_width - 200 * 2, 32 , true);
     editorState.graphics.frameBufferTopMenu = createFrameBuffer(editorState.screen_width, 32, true);
     editorState.graphics.frameBufferStatusBar = createFrameBuffer(editorState.screen_width, 32, true);
     editorState.graphics.frameBufferSceneTree = createFrameBuffer(200, editorState.screen_height-64, true);
@@ -814,10 +932,11 @@ void initEditor(EditorState& editorState) {
     editorState.graphics.cameraTransformBuffer = createConstantBuffer(sizeof(glm::mat4) * 2);
 
     // Mesh import and vertex buffer creation etc.
-    auto importedMeshes = importMeshFromFile("assets/test.glb");
-    auto thumbnailTexture = createThumbnailForMesh(importedMeshes, editorState.graphics.shaderProgram3D,
+    auto importedMeshData = importMeshFromFile("assets/test.glb");
+    auto thumbnailTexture = createThumbnailForMesh(importedMeshData, editorState.graphics.shaderProgram3D,
         editorState.graphics.objectTransformBuffer, editorState.graphics.cameraTransformBuffer, editorState.vertexAttributes, 128, 128);
-    for (auto im : importedMeshes) {
+    auto meshGroup = new MeshGroup();
+    for (auto im : importedMeshData) {
         auto mesh = im->toMesh();
         mesh->thumbnail = thumbnailTexture;
         // Now we decide which attributes to link with:
@@ -828,7 +947,9 @@ void initEditor(EditorState& editorState) {
             describeVertexAttributes(vertexAttributes, mesh->meshVertexBuffer, editorState.graphics.shaderProgram, mesh->meshVertexArray);
         }
         editorState.meshPool[im->meshName] = mesh;
+        meshGroup->meshes.push_back(mesh);
     }
+    editorState.importedMeshGroups.push_back(meshGroup);
 
     // {
     //     auto importedTestMesh = importMeshFromFile("assets/test4.glb")[0]->toMesh();
@@ -888,6 +1009,23 @@ void initEditor(EditorState& editorState) {
 
     pixelsdj = load_image("assets/Ch15_1002_Diffuse.png", &image_width, &image_height);
     editorState.texturePool["ch15"] = createTexture(image_width, image_height, pixelsdj, 4);
+
+    editorState.texturePool["gray_bg"] = createTextureFromFile("assets/gray_bg.png");
+
+    // Create some test tabs:
+    auto tab1 = new Tab{"Soldier"};
+    tab1->tabHeader.titleTextMesh = createTextMesh(editorState.graphics.fontHandle, "Soldier");
+    tab1->type = TabType::Model;
+    auto tab2 = new Tab{"Knight"};
+    tab2->tabHeader.titleTextMesh = createTextMesh(editorState.graphics.fontHandle, "Knight");
+    tab2->type = TabType::Model;
+    auto tab3 = new Tab{"Diffuse_texture_soldier"};
+    tab3->tabHeader.titleTextMesh = createTextMesh(editorState.graphics.fontHandle, "Diffuse_texture_soldier");
+    tab3->type = TabType::Model;
+    editorState.mainTabs.push_back(tab1);
+    editorState.mainTabs.push_back(tab2);
+    editorState.mainTabs.push_back(tab3);
+
 
 }
 

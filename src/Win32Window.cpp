@@ -6,12 +6,17 @@
 
 static bool lbuttonDown = false;
 static bool lbuttonUp = false;
+static bool leftDoubleClick = false;
 static int mouse_x = 0;
 static int mouse_y = 0;
 static bool useMouse = true;
 static int timer_token_counter = 0;
 std::map<int, LARGE_INTEGER> timer_tokens;
 static WPARAM last_key_press_ = 0;
+
+bool winLeftDoubleClick() {
+    return leftDoubleClick;
+}
 
 bool winLeftMouseUp() {
     return lbuttonUp;
@@ -65,6 +70,10 @@ LRESULT CALLBACK Win32Window::wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
                 mouse_x = GET_X_LPARAM(lParam);
                 mouse_y = GET_Y_LPARAM(lParam);
             }
+            break;
+
+        case WM_LBUTTONDBLCLK:
+            leftDoubleClick = true;
             break;
 
         case WM_LBUTTONDOWN:
@@ -170,6 +179,7 @@ bool Win32Window::process_messages() {
     last_key_press_ = 0;
     lbuttonDown = false;
     lbuttonUp = false;
+    leftDoubleClick = false;
 
     MSG msg;
     while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {

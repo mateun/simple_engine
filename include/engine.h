@@ -107,7 +107,7 @@ struct MeshData {
     std::string materialName;
     std::string diffuseTexturePath; // needed for external textures
     std::string normalMapPath;
-    GraphicsHandle diffuseTexture;  // already the full texture created in memory if it was embedded in the gltf file.
+    GraphicsHandle diffuseTexture = {-1};  // already the full texture created in memory if it was embedded in the gltf file.
 
     // Skeleton/joints data:
     Skeleton * skeleton = nullptr;
@@ -138,6 +138,52 @@ enum class BufferType {
     Vertex,
     Index,
     Constant,
+};
+
+/**
+ * As each Mesh can (and often does)
+ * consist of multiple meshes, one per material,
+ * we store meshes which are logically belonging together
+ * (e.g. a character which consists of 3 body parts due to
+ * 3 different materials).
+ *
+ */
+struct MeshGroup {
+    std::vector<Mesh*> meshes;
+};
+
+struct BoundingBox {
+    float left;
+    float top;
+    float right;
+    float bottom;
+};
+
+struct TabHeader {
+    std::string title;
+    Mesh* titleTextMesh;
+};
+
+enum class TabType {
+    Model,
+    Texture,
+    Script
+};
+
+struct Tab {
+    TabHeader tabHeader;
+    TabType type;
+
+    // For models
+    MeshGroup* meshGroup = nullptr;
+
+    // For textures
+    GraphicsHandle texture;
+
+    // For scripts
+    // TODO this is just temporary,
+    // we don't know the real structure of a "script" yet.
+    std::string script;
 };
 
 struct Mesh {
@@ -264,6 +310,7 @@ Mesh* createTextMesh(GraphicsHandle fontHandle, const std::string& text);
 MeshData* renderTextIntoQuadGeometry(GraphicsHandle fontHandle, const std::string& text);
 std::vector<MeshData*> importMeshFromFile(const std::string& fileName);
 std::wstring showFileDialog(const std::wstring& typeFilter);
+BoundingBox measureText(GraphicsHandle fontHandle, const std::string& text);
 
 void initGraphics(Win32Window& window, bool msaa, int msaa_samples);
 void clear(float r, float g, float b, float a);
@@ -307,6 +354,7 @@ void gl_init(HWND hwnd, bool msaa, int msaa_samples);
 
 int mouseX();
 int mouseY();
+bool mouseLeftDoubleClick();
 bool mouseLeftClick();
 bool isKeyDown(int key);
 

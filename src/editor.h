@@ -65,6 +65,7 @@ struct EditorState {
         GraphicsHandle skinningMatricesCBuffer;
         GraphicsHandle fontHandle;
         GraphicsHandle frameBuffer3DPanel;
+        GraphicsHandle frameBufferMainTabPanel;
         GraphicsHandle frameBufferTopMenu;
         GraphicsHandle frameBufferAssetPanel;
         GraphicsHandle frameBufferSceneTree;
@@ -77,6 +78,7 @@ struct EditorState {
 
     } graphics;
 
+    std::vector<MeshGroup*> importedMeshGroups;
     std::vector<GameObject*> gameObjects;
 
     // Cameras
@@ -94,6 +96,8 @@ struct EditorState {
     FrameTimer* frameTimer = nullptr;
     std::vector<VertexAttributeDescription> vertexAttributesAnimated;
     std::vector<VertexAttributeDescription> vertexAttributes;
+    std::vector<Tab*> mainTabs;
+    int hoveredAssetIndex = -1;
 };
 
 #endif //GAME_H

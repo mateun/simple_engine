@@ -3,6 +3,7 @@
 //
 #include <Windows.h>
 
+extern bool winLeftDoubleClick();
 extern WPARAM last_key_press();
 extern int winMouseX();
 extern int winMouseY();
@@ -16,6 +17,10 @@ bool keyPressed(int key) {
 
 bool isKeyDown(int key) {
     return GetKeyState(key) & 0x8000;
+}
+
+bool mouseLeftDoubleClick() {
+    return winLeftDoubleClick();
 }
 
 bool mouseLeftClick() {

@@ -268,7 +268,40 @@ GraphicsHandle getTextureFromFont(GraphicsHandle fontHandle) {
     return font.atlasTexture;
 }
 
+BoundingBox measureText(GraphicsHandle fontHandle, const std::string& text) {
+    auto font = fontMap[fontHandle.id];
+    float penX = 0, penY = 0;
+    float minX =  std::numeric_limits<float>::max();
+    float maxX = -std::numeric_limits<float>::max();
+    float minY =  std::numeric_limits<float>::max();
+    float maxY = -std::numeric_limits<float>::max();
+    for (auto c : text) {
+        stbtt_aligned_quad q;
+        stbtt_GetBakedQuad(font.bakedChars.data(), 512, 512, c - 32, &penX, &penY, &q, 0);
 
+        float pixel_aligned_x0 = std::floor(q.x0 + 0.5f);
+        float pixel_aligned_y0 = std::floor(q.y0 + 0.5f);
+        float pixel_aligned_x1 = std::floor(q.x1 + 0.5f);
+        float pixel_aligned_y1 = std::floor(q.y1 + 0.5f);
+
+        q.x0 = pixel_aligned_x0;
+        q.y0 = pixel_aligned_y0;
+        q.x1 = pixel_aligned_x1;
+        q.y1 = pixel_aligned_y1;
+
+        // Track min/max for bounding box
+        minX = std::min(minX, q.x0);
+        maxX = std::max(maxX, q.x1);
+
+        if (c == 32) continue; // ignore space for Y, as this is always zero and messes things up.
+        minY = std::min(minY, q.y0); // lowest part (descenders)
+        minY = std::min(minY, q.y1);
+
+        maxY = std::max(maxY, q.y0); // highest part (ascenders)
+        maxY = std::max(maxY, q.y1);
+    }
+    return BoundingBox(minX, minY, maxX, maxY);
+}
 
 MeshData* renderTextIntoQuadGeometry(GraphicsHandle fontHandle, const std::string& text) {
 
@@ -368,9 +401,10 @@ Mesh * createTextMesh(GraphicsHandle fontHandle, const std::string &text) {
     Mesh *textMesh = new Mesh();
     textMesh->index_count = textData->indicesFlat.size();
     textMesh->meshVertexArray = createVertexArray();
-    textMesh->meshVertexBuffer = createVertexBuffer(textVertexList.data(), textVertexList.size() * sizeof(float) * 2, sizeof(float) * 5, BufferUsage::Dynamic);
+    // TODO / FIXME: ever so often we crash here with memory access violation!!
+    textMesh->meshVertexBuffer = createVertexBuffer(textVertexList.data(), textVertexList.size() * sizeof(float) * 3, sizeof(float) * 5, BufferUsage::Dynamic);
     associateVertexBufferWithVertexArray(textMesh->meshVertexBuffer, textMesh->meshVertexArray);
-    textMesh->meshIndexBuffer = createIndexBuffer(textData->indicesFlat.data(), textData->indicesFlat.size() * sizeof(uint32_t) * 2, BufferUsage::Dynamic);
+    textMesh->meshIndexBuffer = createIndexBuffer(textData->indicesFlat.data(), textData->indicesFlat.size() * sizeof(uint32_t) * 3, BufferUsage::Dynamic);
     associateIndexBufferWithVertexArray( textMesh->meshIndexBuffer, textMesh->meshVertexArray);
     // Our default 2D attributes, position and texture:
     std::vector<VertexAttributeDescription> vertexAttributes =  {
