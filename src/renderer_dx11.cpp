@@ -550,6 +550,20 @@ D3D11_USAGE dx11UsageFromBufferUsage(BufferUsage bufferUsage) {
 }
 
 GraphicsHandle createVertexBuffer(void* data, int size, uint32_t stride, BufferUsage bufferUsage) {
+
+    if (data == nullptr && size > 0) {
+        std::cerr << "Null data pointer with non-zero size" << std::endl;
+        exit(1);
+    }
+
+    MEMORY_BASIC_INFORMATION mbi;
+    if (VirtualQuery(data, &mbi, sizeof(mbi))) {
+        if (mbi.Protect == PAGE_NOACCESS) {
+            std::cerr << "Data pointer points to no-access memory" << std::endl;
+            exit(1);
+        }
+    }
+
     D3D11_BUFFER_DESC bd = {};
     bd.Usage = dx11UsageFromBufferUsage(bufferUsage);
     bd.ByteWidth = size;
@@ -560,7 +574,15 @@ GraphicsHandle createVertexBuffer(void* data, int size, uint32_t stride, BufferU
     initData.pSysMem = data;
 
     ID3D11Buffer* vertexBuffer = nullptr;
-    device->CreateBuffer(&bd, &initData, &vertexBuffer);
+    auto result = device->CreateBuffer(&bd, &initData, &vertexBuffer);
+    if (FAILED(result)) {
+        std::cerr << "Failed to create vertex buffer: " << std::hex << result << std::endl;
+        if (result == DXGI_ERROR_DEVICE_REMOVED && device) {
+            HRESULT hr = device->GetDeviceRemovedReason();
+            std::cerr << "Device removed reason: " << std::hex << hr << std::endl;
+        }
+        exit(1);
+    }
 
     GraphicsHandle handle = {nextHandleId++};
     vertexBufferMap[handle.id] = {vertexBuffer, stride};
@@ -931,7 +953,7 @@ GraphicsHandle createThumbnailForMesh(std::vector<MeshData*> meshDataItems, Grap
 
     bindShaderProgram(shaderProgramHandle);
     bindFrameBuffer(thumbnailFrameBuffer, 0, 0, width, height);
-    clearFrameBuffer(thumbnailFrameBuffer, .0, .04, 0.04, 1);
+    clearFrameBuffer(thumbnailFrameBuffer, .0, .0, 0.0, 1);
 
     auto thumbnailCamera = new Camera();
     thumbnailCamera->location = {0, 2, -2};

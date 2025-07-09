@@ -184,6 +184,7 @@ struct Tab {
     // TODO this is just temporary,
     // we don't know the real structure of a "script" yet.
     std::string script;
+    BoundingBox renderBoundingBox;
 };
 
 struct Mesh {

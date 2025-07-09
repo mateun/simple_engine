@@ -97,7 +97,9 @@ struct EditorState {
     std::vector<VertexAttributeDescription> vertexAttributesAnimated;
     std::vector<VertexAttributeDescription> vertexAttributes;
     std::vector<Tab*> mainTabs;
+    std::string currentMainTabTitle;
     int hoveredAssetIndex = -1;
+    std::string currentHoverTabTitle;
 };
 
 #endif //GAME_H

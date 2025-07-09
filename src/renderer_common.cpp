@@ -401,10 +401,9 @@ Mesh * createTextMesh(GraphicsHandle fontHandle, const std::string &text) {
     Mesh *textMesh = new Mesh();
     textMesh->index_count = textData->indicesFlat.size();
     textMesh->meshVertexArray = createVertexArray();
-    // TODO / FIXME: ever so often we crash here with memory access violation!!
-    textMesh->meshVertexBuffer = createVertexBuffer(textVertexList.data(), textVertexList.size() * sizeof(float) * 3, sizeof(float) * 5, BufferUsage::Dynamic);
+    textMesh->meshVertexBuffer = createVertexBuffer(textVertexList.data(), textVertexList.size() * sizeof(float), sizeof(float) * 5, BufferUsage::Dynamic);
     associateVertexBufferWithVertexArray(textMesh->meshVertexBuffer, textMesh->meshVertexArray);
-    textMesh->meshIndexBuffer = createIndexBuffer(textData->indicesFlat.data(), textData->indicesFlat.size() * sizeof(uint32_t) * 3, BufferUsage::Dynamic);
+    textMesh->meshIndexBuffer = createIndexBuffer(textData->indicesFlat.data(), textData->indicesFlat.size() * sizeof(uint32_t), BufferUsage::Dynamic);
     associateIndexBufferWithVertexArray( textMesh->meshIndexBuffer, textMesh->meshVertexArray);
     // Our default 2D attributes, position and texture:
     std::vector<VertexAttributeDescription> vertexAttributes =  {

@@ -19,7 +19,7 @@
 
 static float frame_time = 0.0f;
 
-void render3DPanel(EditorState& editorState);
+void render3DPanel(int originX, int originY, int width, int height, EditorState & editorState);
 
 void clear_screen(int width, int height, Win32Window& window, uint32_t *pixels32) {
     auto start_clear = window.performance_count();
@@ -224,6 +224,156 @@ void renderSceneTree(int originX, int originY, int width, int height, EditorStat
 }
 
 
+Tab* findTabByTitle(const std::vector<Tab *> & tabs, const std::string & title) {
+    for (auto tab : tabs) {
+        if (tab->tabHeader.title == title) {
+            return tab;
+        }
+    }
+
+    return nullptr;
+}
+
+void renderMeshEditor(int originX, int originY, int width, int height, EditorState & editorState, MeshGroup* meshGroup) {
+    setFrontCulling(false);
+
+    bindShaderProgram(editorState.graphics.shaderProgram3D);
+    bindFrameBuffer(editorState.graphics.frameBuffer3DPanel, 0, 0, width, height);
+    clearFrameBuffer(editorState.graphics.frameBuffer3DPanel, .0, .0, 0.0, 1);
+    uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.perspectiveCamera->matrixBufferPtr(), sizeof(glm::mat4) * 2, 1);
+
+    // Animation timing
+    static float animationTime = 0.0f;
+    animationTime += frame_time;
+
+    // Render each mesh of this group:
+    for (auto mesh : meshGroup->meshes) {
+        bindVertexArray(mesh->meshVertexArray);
+
+        if (mesh->diffuseTexture.id != -1) {
+            bindTexture(mesh->diffuseTexture, 0);
+        } else {
+            bindTexture(editorState.texturePool["debug_texture"], 0);
+        }
+
+        // Skeleton/joint posing:
+        if (mesh->skeleton != nullptr) {
+            if (mesh->skeleton->animations.size() > 0) {
+                // We need a different shader here, which knows our attributes for blend-weights, blend-indices and the
+                // matrix palette cbuffer.
+                bindShaderProgram(editorState.graphics.animatedShaderProgram);
+
+                // Run the first animation here
+                auto animation = mesh->skeleton->animations[0];
+                if (animationTime >= animation->duration) {
+                    std::cout << "Animation looping" << std::to_string(animationTime) << std::endl;
+                    animationTime = 0.0f;
+                }
+                for (auto joint : mesh->skeleton->joints) {
+                    auto translationKeys = getStartEndKeyFrameForTime(animationTime, animation, KeyFrameType::Translation, joint->name);
+                    auto rotationKeys = getStartEndKeyFrameForTime(animationTime, animation, KeyFrameType::Rotation, joint->name);
+                    auto scalingKeys = getStartEndKeyFrameForTime(animationTime, animation, KeyFrameType::Scale, joint->name);
+
+                    // Translation interpolation:
+                    float t0 = translationKeys.posKeys.first.mTime / animation->ticksPerSecond;;
+                    float t1 = translationKeys.posKeys.second.mTime / animation->ticksPerSecond;
+                    glm::vec3 p0 = aiToGLM(translationKeys.posKeys.first.mValue);
+                    glm::vec3 p1 = aiToGLM(translationKeys.posKeys.second.mValue);
+                    float t = ((float) animationTime - t0 ) / (float) (t1 - t0);
+                    glm::vec3 p = glm::mix(p0, p1, t);
+
+                    // Rotation interpolation
+                    t0 = rotationKeys.rotKeys.first.mTime / animation->ticksPerSecond;
+                    t1 = rotationKeys.rotKeys.second.mTime / animation->ticksPerSecond;
+                    glm::quat q0 = aiToGLM(rotationKeys.rotKeys.first.mValue);
+                    glm::quat q1 = aiToGLM(rotationKeys.rotKeys.second.mValue);
+                    t = ((float) animationTime - t0 ) / (float) (t1 - t0);
+                    // if (joint->name == "spine") {
+                    //     printf("time: %.2f | t0: %.2f, t1: %.2f, t: %.2f\n", animationTime, t0, t1, t);
+                    // }
+                    glm::quat q = glm::slerp(q0, q1, t);
+
+                    // Scaling interpolation
+                    t0 = scalingKeys.scaleKeys.first.mTime / animation->ticksPerSecond;
+                    t1 = scalingKeys.scaleKeys.second.mTime / animation->ticksPerSecond;
+                    glm::vec3 s0 = aiToGLM(scalingKeys.scaleKeys.first.mValue);
+                    glm::vec3 s1 = aiToGLM(scalingKeys.scaleKeys.second.mValue);
+                    t = ((float) animationTime - t0 ) / (float) (t1 - t0);
+                    glm::vec3 s = glm::mix(s0, s1, t);
+
+                    joint->poseLocalTransform = translate(glm::mat4(1.0f), p) * glm::toMat4(q) *
+                        glm::scale(glm::mat4(1.0f), s);
+
+                }
+
+                // Now calculate the global pose for each joint:
+                for (auto j  : mesh->skeleton->joints) {
+                    if (j->parent) {
+                        j->poseGlobalTransform = j->parent->poseGlobalTransform * j->poseLocalTransform;
+                    } else {
+                        j->poseGlobalTransform = j->poseLocalTransform; // only the root bone has no parent.
+                    }
+                    j->poseFinalTransform = j->poseGlobalTransform * j->inverseBindMatrix;
+
+                }
+
+                // build frame matrix palette.
+                // One transform per joint, we upload this to the gpu for skinning inside the vertex shader:
+                std::vector<glm::mat4> framePalette;
+                for (auto& j : mesh->skeleton->joints) {
+                    framePalette.push_back(j->poseFinalTransform);
+                }
+
+                // Upload to gpu:
+                uploadConstantBufferData( editorState.graphics.skinningMatricesCBuffer, framePalette.data(), sizeof(glm::mat4) * framePalette.size(), 2);
+
+
+            }
+        }
+
+        static float roto = 0.0f;
+        roto += 5.0f * frame_time;
+        auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(roto), glm::vec3(0.0f, 1.0f, 0.0f));
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), {0, 0, 0}) * rotationMatrix * scaleMatrix;
+        uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, mesh->index_count, 0);
+    }
+
+
+
+    // Render the 3D panel framebuffer as quad
+    {
+
+
+        bindDefaultBackbuffer(0, 0, editorState.screen_width, editorState.screen_height);
+        bindFrameBufferTexture(editorState.graphics.frameBuffer3DPanel, 0);
+        uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
+
+        bindVertexArray(editorState.graphics.quadVertexArray);
+        bindShaderProgram(editorState.graphics.shaderProgram);
+
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1));
+        auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(200 + width/2, 32 + height/2, 0.9)) * rotationMatrix * scaleMatrix;
+        //setFrontCulling(false);
+        uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+    }
+
+    // End 3d scene
+}
+
+
+void renderMainViewportBody(int originX, int originY, int width, int height, EditorState & editorState) {
+    auto currentTab = findTabByTitle(editorState.mainTabs, editorState.currentMainTabTitle);
+    if (currentTab) {
+        if (currentTab->type == TabType::Model) {
+            renderMeshEditor(originX, originY, width, height, editorState, currentTab->meshGroup);
+        }
+    }
+}
+
 void render3DPanel(int originX, int originY, int width, int height, EditorState & editorState) {
     // Render 3D scene, first into framebuffer, then as quad on to the final backbuffer.
     setFrontCulling(false);
@@ -398,18 +548,16 @@ void renderAssetPanel(int originX, int originY, int width, int height, EditorSta
             renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
 
             if (editorState.hoveredAssetIndex == meshIndex-1) {
-                bindTexture(editorState.texturePool["gray_bg"], 0);
+                bindTexture(editorState.texturePool["light_gray_bg"], 0);
                 auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-                auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(134, 134, 1));
-                auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(marginLeft-2, verticalOffset-2, 2.5)) * rotationMatrix * scaleMatrix;
+                auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(136, 136, 1));
+                auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(marginLeft, verticalOffset, 2.5)) * rotationMatrix * scaleMatrix;
                 uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
                 renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
             }
         }
 
-
-
-
+        // Panel title text
         bindShaderProgram(editorState.graphics.textShaderProgram);
         auto textMesh = editorState.textMesh;
         updateText(*textMesh, editorState.graphics.fontHandle, "Asset Browser");
@@ -528,15 +676,23 @@ void renderMainTabPanel(int originX, int originY, int width, int height, EditorS
         auto titleWidth = titleBoundingBox.right - titleBoundingBox.left;
         accumulatedTextLength += titleWidth + 24;
 
-
         // The background rectangle:
         enableBlending(false);
         bindVertexArray(editorState.graphics.quadVertexArray);
         bindShaderProgram(editorState.graphics.shaderProgram);
-        bindTexture(editorState.texturePool["gray_bg"], 0);
-        // auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        if (editorState.currentMainTabTitle == tab->tabHeader.title) {
+            bindTexture(editorState.texturePool["light_gray_bg"], 0);
+        } else {
+            bindTexture(editorState.texturePool["gray_bg"], 0);
+        }
+
+        if (editorState.currentHoverTabTitle == tab->tabHeader.title) {
+            bindTexture(editorState.texturePool["mid_blue_bg"], 0);
+        }
+
         auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(titleWidth+16, 32, 1));
         auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(horizontalOffset-4 + (titleWidth/2) + 4, 16, 2)) * scaleMatrix;
+        tab->renderBoundingBox = {(float)horizontalOffset-4, 0, (float)horizontalOffset-4 + titleWidth + 16, 32};
         uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
 
@@ -556,13 +712,16 @@ void renderMainTabPanel(int originX, int originY, int width, int height, EditorS
         bindVertexArray(editorState.graphics.quadVertexArray);
         bindShaderProgram(editorState.graphics.shaderProgram);
         bindTexture(editorState.texturePool["gray_bg"], 0);
-        // auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, 2, 1));
-        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(editorState.screen_width/2 , 31, 2)) * scaleMatrix;
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(width/2 , 31, 2)) * scaleMatrix;
         uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
     }
 
+
+
+
+    // Blit fulltime quad
     enableBlending(false);
     bindDefaultBackbuffer(0, 0, editorState.screen_width, editorState.screen_height);
     bindVertexArray(editorState.graphics.quadVertexArray);
@@ -586,9 +745,36 @@ void renderPanels(EditorState& editorState) {
     renderTopMenu(editorState.screen_width/2, 16, editorState.screen_width, 32, editorState);
     renderSceneTree(200/2, 32+ (editorState.screen_height-64)/2, 200, editorState.screen_height-64, editorState);
     renderMainTabPanel(editorState.screen_width/2, 32 + 16, editorState.screen_width - 400, 32, editorState);
-    render3DPanel(200, 32 + (editorState.screen_height - 96/2), editorState.screen_width - 400, editorState.screen_height - 96, editorState);
+    renderMainViewportBody(200, 32 + (editorState.screen_height - 96/2), editorState.screen_width - 400, editorState.screen_height - 96, editorState);
     renderAssetPanel(editorState.screen_width - 100, 32+ (editorState.screen_height-64)/2, 200, editorState.screen_height-64, editorState);
     renderStatusBar(editorState.screen_width/2, editorState.screen_height - 16, editorState.screen_width, 32, editorState);
+
+}
+
+bool assetIsAlreadyOpenInTab(const std::string& tabTitle, EditorState& editorState) {
+    for (auto tab : editorState.mainTabs) {
+        if (tab->tabHeader.title == tabTitle) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void check_main_tab_inputs(EditorState& editorState) {
+    int vOffset = 32;
+    int hOffset = 200;
+    editorState.currentHoverTabTitle = "";
+    int mouse_x = mouseX();
+    int mouse_y = mouseY();
+    for (auto tab : editorState.mainTabs) {
+        if (mouse_x > (hOffset + tab->renderBoundingBox.left) && mouse_x < (hOffset + tab->renderBoundingBox.right)  &&
+            mouse_y > (vOffset + tab->renderBoundingBox.top) && mouse_y < (vOffset + tab->renderBoundingBox.bottom) ) {
+                editorState.currentHoverTabTitle = tab->tabHeader.title;
+
+            }
+    }
+
+
 
 }
 
@@ -596,13 +782,33 @@ void check_asset_browser_inputs(EditorState & editorState) {
     int topOffset = 72;
     int vSize = 128;
     int vMargin = 16;
-    if (mouseX() > editorState.screen_width - 184 && mouseX() < editorState.screen_width - 16 &&
-        mouseY() > 32 && mouseY() < editorState.screen_height - 32) {
-
+    if (mouseX() > editorState.screen_width - 184 && mouseX() < editorState.screen_width - 48 &&
+        mouseY() > 64 && mouseY() < editorState.screen_height - 32) {
         float assetIndexWithMargin  = (mouseY() - topOffset) / (vSize + vMargin);
         editorState.hoveredAssetIndex = assetIndexWithMargin;
-        //std::cout << "mouse over asset browser at index: " << std::to_string(assetIndex) << std::endl;
+    } else {
+        editorState.hoveredAssetIndex = -1;
+    }
 
+    // Check if the calculated index corresponds to an actual asset.
+    // TODO: accommodate for scrolling offsets.
+    if (editorState.hoveredAssetIndex >= 0) {
+        if (editorState.hoveredAssetIndex < editorState.importedMeshGroups.size()) {
+            if (mouseLeftDoubleClick() || mouseLeftClick()) {
+                auto meshGroup = editorState.importedMeshGroups[editorState.hoveredAssetIndex];
+                auto name = meshGroup->meshes[0]->name; // TODO give a name to the meshgroup itself
+                if (assetIsAlreadyOpenInTab(name, editorState)) {
+                    // Set the current tab to be the selected one here:
+                    editorState.currentMainTabTitle = name;
+                } else {
+                    auto modelTab = new Tab{name};
+                    modelTab->tabHeader.titleTextMesh = createTextMesh(editorState.graphics.fontHandle, name);
+                    modelTab->type = TabType::Model;
+                    modelTab->meshGroup = meshGroup;
+                    editorState.mainTabs.push_back(modelTab);
+                }
+            }
+        }
     }
 }
 
@@ -650,6 +856,7 @@ void do_frame(const Win32Window & window, EditorState& editorState) {
     update_camera(editorState);
     check_menu_inputs(editorState);
     check_asset_browser_inputs(editorState);
+    check_main_tab_inputs(editorState);
 
     setDepthTesting(true);
     clear(0, 0.0, 0, 1);
@@ -860,6 +1067,21 @@ struct VOutput
     glm::vec2 tex;
 };
 
+void createTestDummyTabs(EditorState & editorState) {
+    auto tab1 = new Tab{"Soldier"};
+    tab1->tabHeader.titleTextMesh = createTextMesh(editorState.graphics.fontHandle, "Soldier");
+    tab1->type = TabType::Model;
+    auto tab2 = new Tab{"Knight"};
+    tab2->tabHeader.titleTextMesh = createTextMesh(editorState.graphics.fontHandle, "Knight");
+    tab2->type = TabType::Model;
+    auto tab3 = new Tab{"Diffuse_texture_soldier"};
+    tab3->tabHeader.titleTextMesh = createTextMesh(editorState.graphics.fontHandle, "Diffuse_texture_soldier");
+    tab3->type = TabType::Model;
+    editorState.mainTabs.push_back(tab1);
+    editorState.mainTabs.push_back(tab2);
+    editorState.mainTabs.push_back(tab3);
+}
+
 void initEditor(EditorState& editorState) {
 #ifdef RENDERER_GL46
     editorState.graphics.shaderProgram = createShaderProgram(vshader_glsl, fshader_glsl);
@@ -1011,20 +1233,11 @@ void initEditor(EditorState& editorState) {
     editorState.texturePool["ch15"] = createTexture(image_width, image_height, pixelsdj, 4);
 
     editorState.texturePool["gray_bg"] = createTextureFromFile("assets/gray_bg.png");
+    editorState.texturePool["light_gray_bg"] = createTextureFromFile("assets/light_gray_bg.png");
+    editorState.texturePool["mid_blue_bg"] = createTextureFromFile("assets/mid_blue_bg.png");
 
     // Create some test tabs:
-    auto tab1 = new Tab{"Soldier"};
-    tab1->tabHeader.titleTextMesh = createTextMesh(editorState.graphics.fontHandle, "Soldier");
-    tab1->type = TabType::Model;
-    auto tab2 = new Tab{"Knight"};
-    tab2->tabHeader.titleTextMesh = createTextMesh(editorState.graphics.fontHandle, "Knight");
-    tab2->type = TabType::Model;
-    auto tab3 = new Tab{"Diffuse_texture_soldier"};
-    tab3->tabHeader.titleTextMesh = createTextMesh(editorState.graphics.fontHandle, "Diffuse_texture_soldier");
-    tab3->type = TabType::Model;
-    editorState.mainTabs.push_back(tab1);
-    editorState.mainTabs.push_back(tab2);
-    editorState.mainTabs.push_back(tab3);
+    //createTestDummyTabs(editorState);
 
 
 }
