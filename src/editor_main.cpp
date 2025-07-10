@@ -1004,7 +1004,6 @@ void check_asset_browser_inputs(EditorState & editorState) {
 }
 
 void check_menu_inputs(EditorState & editorState) {
-
     // TODO track mouseover similar to tab menu items,
     // as each menu item is a different length.
     // For now we just hardcoded check for the import item:
