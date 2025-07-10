@@ -256,6 +256,19 @@ void renderGameObjectTree(int originX, int originY, int width, int height, Edito
         sceneTreeCamera.projection_matrix = glm::orthoLH_ZO<float>(0.0f, (float) width, (float) height, 0.0f, 0.0, 30);
         uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, sceneTreeCamera.matrixBufferPtr(), sizeof(Camera), 1);
 
+
+        // Scroll "protection" behind the title:
+        {
+            bindVertexArray(editorState.graphics.quadVertexArray);
+            bindShaderProgram(editorState.graphics.shaderProgram);
+            bindTexture(editorState.texturePool["gray_bg"], 0);
+            auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(200, 32, 1));
+            auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(100, 16 , 1.8)) * scaleMatrix;
+            uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+            renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+        }
+
+
         enableBlending(true);
         // Render title
         bindShaderProgram(editorState.graphics.textShaderProgram);
@@ -617,7 +630,7 @@ void renderAssetPanel(int originX, int originY, int width, int height, EditorSta
             if (editorState.hoveredAssetIndex == meshIndex-1) {
                 bindTexture(editorState.texturePool["light_gray_bg"], 0);
                 auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-                auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(136, 136, 1));
+                auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(136, 136, 2));
                 auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(marginLeft, verticalOffset, 2.5)) * rotationMatrix * scaleMatrix;
                 uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
                 renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
@@ -646,16 +659,32 @@ void renderAssetPanel(int originX, int originY, int width, int height, EditorSta
             renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
         }
 
+        // Scroll "protection" behind the title text but in front of the actual assets, so they
+        // slip under this protection panel:
+        {
+                bindVertexArray(editorState.graphics.quadVertexArray);
+                bindShaderProgram(editorState.graphics.shaderProgram);
+                bindTexture(editorState.texturePool["gray_bg"], 0);
+                auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(200, 32, 1));
+                auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(100, 16 , 1.8)) * scaleMatrix;
+                uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+                renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+        }
+
         // Panel title text
-        bindShaderProgram(editorState.graphics.textShaderProgram);
-        auto textMesh = editorState.textMesh;
-        updateText(*textMesh, editorState.graphics.fontHandle, "Asset Browser");
-        bindVertexArray(textMesh->meshVertexArray);
-        bindTexture(getTextureFromFont(editorState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
-        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
-        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(24, 18, 1)) *  scaleMatrix;
-        uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+        {
+            bindShaderProgram(editorState.graphics.textShaderProgram);
+            auto textMesh = editorState.textMesh;
+            updateText(*textMesh, editorState.graphics.fontHandle, "Asset Browser");
+            bindVertexArray(textMesh->meshVertexArray);
+            bindTexture(getTextureFromFont(editorState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
+            auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+            auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(24, 18, 1)) *  scaleMatrix;
+            uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+            renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+        }
+
+
 
         // Blit fb quad to the screen:
         enableBlending(false);
@@ -664,9 +693,9 @@ void renderAssetPanel(int originX, int originY, int width, int height, EditorSta
         bindShaderProgram(editorState.graphics.shaderProgram);
         bindFrameBufferTexture(editorState.graphics.frameBufferSceneTree, 0);
         uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
-        scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1));
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1));
         auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(originX, originY, 2)) * rotationMatrix * scaleMatrix;
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(originX, originY, 2)) * rotationMatrix * scaleMatrix;
         uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
 }
@@ -962,7 +991,7 @@ void check_asset_browser_inputs(EditorState & editorState) {
     if (keyPressed('K')) {
         auto travel = editorState.assetBrowserVScrollThumbHeight + editorState.assetVBrowserVScrollPosition;
         std::cout << "Travel: " << std::to_string(travel) << " pos: " << std::to_string(editorState.assetVBrowserVScrollPosition) << std::endl;
-        if (travel < (editorState.screen_height - 64 - 32)) {
+        if (travel < (editorState.screen_height - 64 - 32 - 8)) {
             editorState.assetVBrowserVScrollPosition += 1;
         }
     }
