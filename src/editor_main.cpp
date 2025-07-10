@@ -190,7 +190,6 @@ void renderGameObjectsRecursive(EditorState & editorState, GameObject* rootGameO
         uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, editorState.textMesh->index_count, 0);
 
-
         // Render a background rect for selected items
         if (editorState.currentSelectedGameObjectTreeItem == go) {
             enableBlending(true);
@@ -597,14 +596,15 @@ void renderAssetPanel(int originX, int originY, int width, int height, EditorSta
         sceneTreeCamera.projection_matrix = glm::orthoLH_ZO<float>(0.0f, (float) width, (float) height, 0.0f, 0.0, 30);
         uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, sceneTreeCamera.matrixBufferPtr(), sizeof(Camera), 1);
 
-        enableBlending(true);
         // Render the assets:
+        enableBlending(true);
+
         int meshIndex = 0;
         int verticalSize = 128;
         int horizontalSize = 128;
         float marginLeft = horizontalSize/2 + 24;
         for (auto meshGroup : editorState.importedMeshGroups) {
-            int verticalOffset = 40 + verticalSize/2 + 144 * meshIndex++;
+            int verticalOffset = 40 - editorState.assetVBrowserVScrollOffset + verticalSize/2 + 144 * meshIndex++;
             auto thumbnailTexture = meshGroup->meshes[0]->thumbnail;
             bindTexture(thumbnailTexture, 0);
             auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
@@ -622,6 +622,28 @@ void renderAssetPanel(int originX, int originY, int width, int height, EditorSta
                 uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
                 renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
             }
+        }
+
+        // Vertical scrollbar in case we have more assets then can be displayed:
+        if (editorState.importedMeshGroups.size() * 144 > height) {
+            //enableBlending(true);
+            bindVertexArray(editorState.graphics.quadVertexArray);
+            bindShaderProgram(editorState.graphics.shaderProgram);
+            bindTexture(editorState.texturePool["gray_bg"], 0);
+
+            auto panelHeight = height - 32;
+            auto totalContentHeight = editorState.importedMeshGroups.size() * 144;
+            auto thumbHeightPercentage = (float)((float)panelHeight / (float)totalContentHeight);
+            editorState.assetBrowserVScrollThumbHeight = thumbHeightPercentage * panelHeight;
+
+            float maxContentTravel = totalContentHeight - panelHeight;
+            float maxThumbTravel = panelHeight- editorState.assetBrowserVScrollThumbHeight;
+            editorState.assetVBrowserVScrollOffset = (editorState.assetVBrowserVScrollPosition / maxThumbTravel) * maxContentTravel;
+
+            auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(16, editorState.assetBrowserVScrollThumbHeight, 1));
+            auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(width - 8, 32 + 8 + editorState.assetVBrowserVScrollPosition + editorState.assetBrowserVScrollThumbHeight/2 , 1)) * scaleMatrix;
+            uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+            renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
         }
 
         // Panel title text
@@ -902,7 +924,7 @@ void check_main_tab_inputs(EditorState& editorState) {
 }
 
 void check_asset_browser_inputs(EditorState & editorState) {
-    int topOffset = 72;
+    int topOffset = 72 - editorState.assetVBrowserVScrollOffset ;
     int vSize = 128;
     int vMargin = 16;
     if (mouseX() > editorState.screen_width - 184 && mouseX() < editorState.screen_width - 48 &&
@@ -931,6 +953,23 @@ void check_asset_browser_inputs(EditorState & editorState) {
                     editorState.mainTabs.push_back(modelTab);
                 }
             }
+        }
+    }
+
+    // Check vscrollbar.
+    // For now we just listen to some keys to move the scrollbar, so we can test that
+    // the actual content display works. So, later, we can concentrate on the picking of the scrollbar.
+    if (keyPressed('K')) {
+        auto travel = editorState.assetBrowserVScrollThumbHeight + editorState.assetVBrowserVScrollPosition;
+        std::cout << "Travel: " << std::to_string(travel) << " pos: " << std::to_string(editorState.assetVBrowserVScrollPosition) << std::endl;
+        if (travel < (editorState.screen_height - 64 - 32)) {
+            editorState.assetVBrowserVScrollPosition += 1;
+        }
+    }
+
+    if (keyPressed('I')) {
+        if (editorState.assetVBrowserVScrollPosition > 0) {
+            editorState.assetVBrowserVScrollPosition -= 1;
         }
     }
 }
@@ -963,6 +1002,7 @@ void check_menu_inputs(EditorState & editorState) {
 
         }
     }
+
 }
 
 void do_frame(const Win32Window & window, EditorState& editorState) {

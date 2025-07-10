@@ -105,6 +105,9 @@ struct EditorState {
     std::vector<VertexAttributeDescription> vertexAttributes;
     std::vector<Tab*> mainTabs;
     std::string currentMainTabTitle;
+    float assetVBrowserVScrollOffset = 0;
+    int assetVBrowserVScrollPosition = 0;
+    float assetBrowserVScrollThumbHeight = 0;
     int hoveredAssetIndex = -1;
     int hoveredGameObjectTreeItemIndex = -1;
     std::string currentHoverTabTitle;
@@ -113,6 +116,7 @@ struct EditorState {
     std::vector<GameObject*> visibleGameObjectsWithChildrenTreeItems;
     GameObject* currentHoverExpandItem;
     GameObject* currentSelectedGameObjectTreeItem = nullptr;
+
 };
 
 #endif //GAME_H

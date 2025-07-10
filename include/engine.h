@@ -359,6 +359,7 @@ int mouseY();
 bool mouseLeftDoubleClick();
 bool mouseLeftClick();
 bool isKeyDown(int key);
+bool keyPressed(int key);
 
 #include <Windows.h>
 
