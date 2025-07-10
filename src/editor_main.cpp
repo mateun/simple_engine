@@ -191,6 +191,20 @@ void renderGameObjectsRecursive(EditorState & editorState, GameObject* rootGameO
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, editorState.textMesh->index_count, 0);
 
 
+        // Render a background rect for selected items
+        if (editorState.currentSelectedGameObjectTreeItem == go) {
+            enableBlending(true);
+            bindVertexArray(editorState.graphics.quadVertexArray);
+            bindShaderProgram(editorState.graphics.shaderProgram);
+            bindTexture(editorState.texturePool["gray_bg"], 0);
+            auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(200, 24, 1));
+            worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(100, (vOffset+ invocationCounter * 24) -4 , 2)) * rotationMatrix * scaleMatrix;
+            uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+            renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+
+        }
+
         // Render an expansion icon
         // for now just dummy rects.
         if (go->children.size() > 0) {
@@ -211,9 +225,12 @@ void renderGameObjectsRecursive(EditorState & editorState, GameObject* rootGameO
             go->treeBoundingBox = {(float)hOffsetVarying * 16, -8 + (float)vOffset + invocationCounter * 24,
                 (float)hOffsetVarying * 16 + 24, (float) (vOffset + invocationCounter * 24) + 8};
 
-            editorState.visibleGameObjectTreeItems.push_back(go);
+            editorState.visibleGameObjectsWithChildrenTreeItems.push_back(go);
         }
 
+
+
+        editorState.visibleGameObjectTreeItems.push_back(go);
 
         // Now all the things are rendered for one tree item, we can increment the invocationCount,
         // so we make sure following renders are moved vertically down.
@@ -255,6 +272,7 @@ void renderGameObjectTree(int originX, int originY, int width, int height, Edito
 
         // Render the actual tree for all game objects
         editorState.visibleGameObjectTreeItems.clear();
+        editorState.visibleGameObjectsWithChildrenTreeItems.clear();
         renderGameObjectsRecursive(editorState, nullptr, 0);
 
 
@@ -809,23 +827,59 @@ bool assetIsAlreadyOpenInTab(const std::string& tabTitle, EditorState& editorSta
     return false;
 }
 
+
+
 void check_game_object_tree_inputs(EditorState& editorState) {
-    int vOffset = 24;
-    int hOffset = 0;
-    editorState.currentHoverExpandItem = nullptr;
-    int mouse_x = mouseX();
-    int mouse_y = mouseY();
-    for (auto treeItem : editorState.visibleGameObjectTreeItems) {
-        if (mouse_x > (hOffset + treeItem->treeBoundingBox.left) && mouse_x < (hOffset + treeItem->treeBoundingBox.right)  &&
-            mouse_y > (vOffset + treeItem->treeBoundingBox.top) && mouse_y < (vOffset + treeItem->treeBoundingBox.bottom) ) {
-            //editorState.currentHoverTabTitle = treeItem->tabHeader.title;
-            std::cout << "hovering tree item: " << treeItem->name << std::endl;
-            editorState.currentHoverExpandItem = treeItem;
-            if (mouseLeftClick()) {
-                treeItem->expandedInTree = !treeItem->expandedInTree;
+
+    bool expandedAnItem = false;
+    // First, check for clicking on the expanse icons:
+    {
+        int vOffset = 24;
+        int hOffset = 0;
+        editorState.currentHoverExpandItem = nullptr;
+
+        int mouse_x = mouseX();
+        int mouse_y = mouseY();
+        for (auto treeItem : editorState.visibleGameObjectTreeItems) {
+            if (mouse_x > (hOffset + treeItem->treeBoundingBox.left) && mouse_x < (hOffset + treeItem->treeBoundingBox.right)  &&
+                mouse_y > (vOffset + treeItem->treeBoundingBox.top) && mouse_y < (vOffset + treeItem->treeBoundingBox.bottom) ) {
+
+                editorState.currentHoverExpandItem = treeItem;
+                if (mouseLeftClick()) {
+                    expandedAnItem = true;
+                    treeItem->expandedInTree = !treeItem->expandedInTree;
+                }
             }
         }
     }
+
+    // If we did not expand an icon, we will also check for selecting of the actual
+    // tree items.
+    if (!expandedAnItem) {
+        {
+            int topOffset = 72;
+            int vSize = 24;
+            if (mouseX() > 20 && mouseX() < 192 &&
+                mouseY() > 64 && mouseY() < editorState.screen_height-32) {
+                editorState.hoveredGameObjectTreeItemIndex  = (mouseY() - topOffset) / (vSize);
+
+                } else {
+                    editorState.hoveredGameObjectTreeItemIndex = -1;
+                }
+        }
+
+        // Check if the calculated index corresponds to an actual asset.
+        // TODO: accommodate for scrolling offsets.
+        if (editorState.hoveredGameObjectTreeItemIndex > -1) {
+            if (editorState.hoveredGameObjectTreeItemIndex < editorState.visibleGameObjectTreeItems.size()) {
+                if (mouseLeftClick()) {
+                    editorState.currentSelectedGameObjectTreeItem = editorState.visibleGameObjectTreeItems[editorState.hoveredGameObjectTreeItemIndex];
+                }
+            }
+        }
+
+    }
+
 
 }
 

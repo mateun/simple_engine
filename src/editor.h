@@ -106,10 +106,13 @@ struct EditorState {
     std::vector<Tab*> mainTabs;
     std::string currentMainTabTitle;
     int hoveredAssetIndex = -1;
+    int hoveredGameObjectTreeItemIndex = -1;
     std::string currentHoverTabTitle;
     GameObject * rootGameObject = {};
     std::vector<GameObject*> visibleGameObjectTreeItems;
+    std::vector<GameObject*> visibleGameObjectsWithChildrenTreeItems;
     GameObject* currentHoverExpandItem;
+    GameObject* currentSelectedGameObjectTreeItem = nullptr;
 };
 
 #endif //GAME_H
