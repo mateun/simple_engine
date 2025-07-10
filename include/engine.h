@@ -200,6 +200,7 @@ struct Mesh {
     std::vector<glm::vec2> uvs;
     std::vector<glm::vec4> jointIndices;
     std::vector<glm::vec4> jointWeights;
+    uint32_t creation_index_count;
     uint32_t index_count;
     Skeleton* skeleton = nullptr;
     std::string name;

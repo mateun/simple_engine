@@ -26,10 +26,17 @@ struct GameObject {
         GraphicsHandle meshVertexArray;
         GraphicsHandle meshTextureHandle;
         GraphicsHandle meshShaderProgram;
-        std::vector<Mesh*> meshes;
+        MeshGroup* meshGroup;
     } renderData;
 
     GraphicsHandle diffuseTexture = {-1};
+
+    std::vector<GameObject*> children;
+    std::string name;
+
+    BoundingBox treeBoundingBox;
+
+    bool expandedInTree = false;
 };
 
 struct alignas(16) ObjectTransformBuffer {
@@ -42,7 +49,7 @@ struct alignas(16) ObjectTransformBuffer {
 
 struct EditorState {
 
-    std::map<std::string, Mesh*> meshPool;
+    std::map<std::string, MeshGroup*> meshPool;
     std::map<std::string, GraphicsHandle> texturePool;
 
     struct MenuTextMeshes {
@@ -100,6 +107,9 @@ struct EditorState {
     std::string currentMainTabTitle;
     int hoveredAssetIndex = -1;
     std::string currentHoverTabTitle;
+    GameObject * rootGameObject = {};
+    std::vector<GameObject*> visibleGameObjectTreeItems;
+    GameObject* currentHoverExpandItem;
 };
 
 #endif //GAME_H

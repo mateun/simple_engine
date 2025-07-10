@@ -19,7 +19,7 @@
 
 static float frame_time = 0.0f;
 
-void render3DPanel(int originX, int originY, int width, int height, EditorState & editorState);
+void render3DScenePanel(int originX, int originY, int width, int height, EditorState & editorState);
 
 void clear_screen(int width, int height, Win32Window& window, uint32_t *pixels32) {
     auto start_clear = window.performance_count();
@@ -170,56 +170,105 @@ void renderTopMenu(int originX, int originY, int width, int height, EditorState&
 
 }
 
-void renderSceneTree(int originX, int originY, int width, int height, EditorState& gameState) {
+void renderGameObjectsRecursive(EditorState & editorState, GameObject* rootGameObject, int hOffsetVarying) {
+    static int invocationCounter = 0;
+    if (rootGameObject == nullptr) {
+        rootGameObject = editorState.rootGameObject;
+        invocationCounter = 0;
+    }
+
+    int hOffset = 24;
+    int vOffset = 64;
+    for (auto go : rootGameObject->children) {
+        enableBlending(true);
+        updateText(*editorState.textMesh, editorState.graphics.fontHandle, go->name);
+        bindVertexArray(editorState.textMesh->meshVertexArray);
+        bindShaderProgram(editorState.graphics.textShaderProgram);
+        bindTexture(getTextureFromFont(editorState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset + hOffsetVarying * 16, vOffset + invocationCounter* 24, 1)) *  scaleMatrix;
+        uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, editorState.textMesh->index_count, 0);
+
+
+        // Render an expansion icon
+        // for now just dummy rects.
+        if (go->children.size() > 0) {
+            enableBlending(true);
+            bindVertexArray(editorState.graphics.quadVertexArray);
+            bindShaderProgram(editorState.graphics.shaderProgram);
+            if (go->expandedInTree) {
+                bindTexture(editorState.texturePool["expand_active"], 0);
+            } else {
+                bindTexture(editorState.texturePool["expand_start"], 0);
+            }
+            auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(12, 12, 1));
+            worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(12 + hOffsetVarying * 16, (vOffset+ invocationCounter * 24) -4 , 1)) * rotationMatrix * scaleMatrix;
+            uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+            renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+
+            go->treeBoundingBox = {(float)hOffsetVarying * 16, -8 + (float)vOffset + invocationCounter * 24,
+                (float)hOffsetVarying * 16 + 24, (float) (vOffset + invocationCounter * 24) + 8};
+
+            editorState.visibleGameObjectTreeItems.push_back(go);
+        }
+
+
+        // Now all the things are rendered for one tree item, we can increment the invocationCount,
+        // so we make sure following renders are moved vertically down.
+        invocationCounter++;
+
+
+        // Only recurse if this node is set to expand:
+        if (go->expandedInTree) {
+            renderGameObjectsRecursive(editorState, go, hOffsetVarying+1);
+        }
+    }
+
+}
+
+void renderGameObjectTree(int originX, int originY, int width, int height, EditorState& editorState) {
         setFrontCulling(true);
-        bindVertexArray(gameState.graphics.quadVertexArray);
-        bindShaderProgram(gameState.graphics.shaderProgram);
-        bindFrameBuffer(gameState.graphics.frameBufferSceneTree, 0, 0, width, height);
-        clearFrameBuffer(gameState.graphics.frameBufferSceneTree, .1, .1, 0.1, 1);
-        bindTexture(gameState.graphics.textureHandle, 0);
+        bindVertexArray(editorState.graphics.quadVertexArray);
+        bindShaderProgram(editorState.graphics.shaderProgram);
+        bindFrameBuffer(editorState.graphics.frameBufferSceneTree, 0, 0, width, height);
+        clearFrameBuffer(editorState.graphics.frameBufferSceneTree, .1, .1, 0.1, 1);
+        bindTexture(editorState.graphics.textureHandle, 0);
         Camera sceneTreeCamera;
         sceneTreeCamera.view_matrix = glm::mat4(1);
         sceneTreeCamera.projection_matrix = glm::orthoLH_ZO<float>(0.0f, (float) width, (float) height, 0.0f, 0.0, 30);
-        uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, sceneTreeCamera.matrixBufferPtr(), sizeof(Camera), 1);
+        uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, sceneTreeCamera.matrixBufferPtr(), sizeof(Camera), 1);
 
         enableBlending(true);
-        // Now render the actual scene tree objects (gameObjects),
-        // for now just dummy rects.
-        auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(32, 32, 1));
-        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(120, 50, 2)) * rotationMatrix * scaleMatrix;
-        // worldMatrix = (glm::translate(glm::mat4(1), glm::vec3(0, 0, 2.5)));
-        uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
-
-
-
-
-        // Text rendering
-        // bindShaderProgram(gameState.graphics.textShaderProgram);
-        // uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.orthoCamera, sizeof(Camera), 1);
-        // auto textMesh = gameState.textMesh;
-        // updateText(*textMesh, gameState.graphics.fontHandle, "FTus: " + std::to_string(gameState.frameTimer->getAverage() * 1000 * 1000));
-        // bindVertexArray(textMesh->meshVertexArray);
-        // bindTexture(getTextureFromFont(gameState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
-        // rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        // scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
-        // worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0, gameState.screen_height-64, 1)) * rotationMatrix * scaleMatrix;
-        // renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+        // Render title
+        bindShaderProgram(editorState.graphics.textShaderProgram);
+        auto textMesh = editorState.textMesh;
+        updateText(*textMesh, editorState.graphics.fontHandle, "Game Objects");
+        bindVertexArray(textMesh->meshVertexArray);
+        bindTexture(getTextureFromFont(editorState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(8, 18, 1)) *  scaleMatrix;
+        uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
         // End text rendering
 
-        // Render the framebuffer as a quad somewhere on the screen:
+        // Render the actual tree for all game objects
+        editorState.visibleGameObjectTreeItems.clear();
+        renderGameObjectsRecursive(editorState, nullptr, 0);
 
+
+        // Render the framebuffer as a quad somewhere on the screen:
         enableBlending(false);
-        bindDefaultBackbuffer(0, 0, gameState.screen_width, gameState.screen_height);
-        bindVertexArray(gameState.graphics.quadVertexArray);
-        bindShaderProgram(gameState.graphics.shaderProgram);
-        bindFrameBufferTexture(gameState.graphics.frameBufferSceneTree, 0);
-        uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
+        bindDefaultBackbuffer(0, 0, editorState.screen_width, editorState.screen_height);
+        bindVertexArray(editorState.graphics.quadVertexArray);
+        bindShaderProgram(editorState.graphics.shaderProgram);
+        bindFrameBufferTexture(editorState.graphics.frameBufferSceneTree, 0);
+        uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
         scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1));
-        rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(originX, originY, 2)) * rotationMatrix * scaleMatrix;
-        uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
 }
 
@@ -374,7 +423,7 @@ void renderMainViewportBody(int originX, int originY, int width, int height, Edi
     }
 }
 
-void render3DPanel(int originX, int originY, int width, int height, EditorState & editorState) {
+void render3DScenePanel(int originX, int originY, int width, int height, EditorState & editorState) {
     // Render 3D scene, first into framebuffer, then as quad on to the final backbuffer.
     setFrontCulling(false);
 
@@ -390,7 +439,7 @@ void render3DPanel(int originX, int originY, int width, int height, EditorState 
     // Render each game object:
     for (auto go : editorState.gameObjects) {
         // Render each mesh of this game object:
-        for (auto mesh : go->renderData.meshes) {
+        for (auto mesh : go->renderData.meshGroup->meshes) {
             bindVertexArray(mesh->meshVertexArray);
 
             // Texture: first we take one of the gameObject, if it is set.
@@ -743,7 +792,7 @@ void renderPanels(EditorState& editorState) {
     // Here we should know where every panel is, so we can give it its position as arguments.
     // This is bettter than letting the panel know where it is supposed to be. It normally can not know it.
     renderTopMenu(editorState.screen_width/2, 16, editorState.screen_width, 32, editorState);
-    renderSceneTree(200/2, 32+ (editorState.screen_height-64)/2, 200, editorState.screen_height-64, editorState);
+    renderGameObjectTree(200/2, 32+ (editorState.screen_height-64)/2, 200, editorState.screen_height-64, editorState);
     renderMainTabPanel(editorState.screen_width/2, 32 + 16, editorState.screen_width - 400, 32, editorState);
     renderMainViewportBody(200, 32 + (editorState.screen_height - 96/2), editorState.screen_width - 400, editorState.screen_height - 96, editorState);
     renderAssetPanel(editorState.screen_width - 100, 32+ (editorState.screen_height-64)/2, 200, editorState.screen_height-64, editorState);
@@ -760,6 +809,26 @@ bool assetIsAlreadyOpenInTab(const std::string& tabTitle, EditorState& editorSta
     return false;
 }
 
+void check_game_object_tree_inputs(EditorState& editorState) {
+    int vOffset = 24;
+    int hOffset = 0;
+    editorState.currentHoverExpandItem = nullptr;
+    int mouse_x = mouseX();
+    int mouse_y = mouseY();
+    for (auto treeItem : editorState.visibleGameObjectTreeItems) {
+        if (mouse_x > (hOffset + treeItem->treeBoundingBox.left) && mouse_x < (hOffset + treeItem->treeBoundingBox.right)  &&
+            mouse_y > (vOffset + treeItem->treeBoundingBox.top) && mouse_y < (vOffset + treeItem->treeBoundingBox.bottom) ) {
+            //editorState.currentHoverTabTitle = treeItem->tabHeader.title;
+            std::cout << "hovering tree item: " << treeItem->name << std::endl;
+            editorState.currentHoverExpandItem = treeItem;
+            if (mouseLeftClick()) {
+                treeItem->expandedInTree = !treeItem->expandedInTree;
+            }
+        }
+    }
+
+}
+
 void check_main_tab_inputs(EditorState& editorState) {
     int vOffset = 32;
     int hOffset = 200;
@@ -770,11 +839,11 @@ void check_main_tab_inputs(EditorState& editorState) {
         if (mouse_x > (hOffset + tab->renderBoundingBox.left) && mouse_x < (hOffset + tab->renderBoundingBox.right)  &&
             mouse_y > (vOffset + tab->renderBoundingBox.top) && mouse_y < (vOffset + tab->renderBoundingBox.bottom) ) {
                 editorState.currentHoverTabTitle = tab->tabHeader.title;
-
+                if (mouseLeftClick()) {
+                    editorState.currentMainTabTitle = tab->tabHeader.title;
+                }
             }
     }
-
-
 
 }
 
@@ -833,19 +902,10 @@ void check_menu_inputs(EditorState & editorState) {
                 } else {
                     describeVertexAttributes(editorState.vertexAttributes, mesh->meshVertexBuffer, editorState.graphics.shaderProgram, mesh->meshVertexArray);
                 }
-                editorState.meshPool[im->meshName] = mesh;
+                editorState.meshPool[im->meshName] = meshGroup;
                 meshGroup->meshes.push_back(mesh);
             }
             editorState.importedMeshGroups.push_back(meshGroup);
-
-            auto heroGo = editorState.gameObjects[0];
-            heroGo->renderData.meshes.clear();
-
-            for (auto mesh : std::ranges::views::values(editorState.meshPool)) {
-                heroGo->renderData.meshes.push_back(mesh);
-
-            }
-            heroGo->transform.position = glm::vec3(0, 0, 0);
 
         }
     }
@@ -857,6 +917,7 @@ void do_frame(const Win32Window & window, EditorState& editorState) {
     check_menu_inputs(editorState);
     check_asset_browser_inputs(editorState);
     check_main_tab_inputs(editorState);
+    check_game_object_tree_inputs(editorState);
 
     setDepthTesting(true);
     clear(0, 0.0, 0, 1);
@@ -1082,6 +1143,49 @@ void createTestDummyTabs(EditorState & editorState) {
     editorState.mainTabs.push_back(tab3);
 }
 
+void createTestGameObjects(EditorState & editorState) {
+    auto heroGo = new GameObject();
+    heroGo->transform.position = glm::vec3(1, 0, 0);
+    heroGo->renderData.meshGroup = editorState.meshPool["hero_mesh"];
+    heroGo->name = "Hero";
+    heroGo->expandedInTree = false;
+    editorState.gameObjects.push_back(heroGo);
+
+    auto enemy1Go = new GameObject();
+    enemy1Go->transform.position = glm::vec3(2, 0, 5);
+    enemy1Go->renderData.meshGroup = editorState.meshPool["enemy_mesh"];
+    enemy1Go->name = "Enemy1";
+    enemy1Go->expandedInTree = true;
+    editorState.gameObjects.push_back(enemy1Go);
+
+    auto enemy1DroneGo = new GameObject();
+    enemy1DroneGo->transform.position = glm::vec3(-1, 0, 2);
+    enemy1DroneGo->renderData.meshGroup = editorState.meshPool["drone_mesh"];
+    enemy1DroneGo->name = "Enemy1Drone";
+    enemy1Go->children.push_back(enemy1DroneGo);
+    //enemy1DroneGo->expandedInTree = true;
+
+    auto enemy1DroneDeviceGo = new GameObject();
+    enemy1DroneDeviceGo->transform.position = glm::vec3(-1, 0, 2);
+    enemy1DroneDeviceGo->renderData.meshGroup = editorState.meshPool["drone_device_mesh"];
+    enemy1DroneDeviceGo->name = "DroneDevice";
+    enemy1DroneGo->children.push_back(enemy1DroneDeviceGo);
+
+    auto enemy2Go = new GameObject();
+    enemy2Go->transform.position = glm::vec3(-1, 0, 2);
+    enemy2Go->renderData.meshGroup = editorState.meshPool["enemy_mesh"];
+    enemy2Go->name = "Enemy2";
+    editorState.gameObjects.push_back(enemy2Go);
+
+    editorState.rootGameObject->children.push_back(heroGo);
+    editorState.rootGameObject->children.push_back(enemy1Go);
+    editorState.rootGameObject->children.push_back(enemy2Go);
+
+
+
+
+}
+
 void initEditor(EditorState& editorState) {
 #ifdef RENDERER_GL46
     editorState.graphics.shaderProgram = createShaderProgram(vshader_glsl, fshader_glsl);
@@ -1134,7 +1238,7 @@ void initEditor(EditorState& editorState) {
 
     // Prepare text render meshes:
     editorState.graphics.fontHandle = createFont("assets/consola.ttf", 16);
-    editorState.textMesh = createTextMesh(editorState.graphics.fontHandle, "Test text rendering");
+    editorState.textMesh = createTextMesh(editorState.graphics.fontHandle, "Long placeholder text so updates will fit in nicely");
     editorState.menuTextMeshes.tmFile = createTextMesh(editorState.graphics.fontHandle, "File");
     editorState.menuTextMeshes.tmGameObjects = createTextMesh(editorState.graphics.fontHandle, "GameObjects");
     editorState.menuTextMeshes.tmSettings = createTextMesh(editorState.graphics.fontHandle, "Settings");
@@ -1154,46 +1258,33 @@ void initEditor(EditorState& editorState) {
     editorState.graphics.cameraTransformBuffer = createConstantBuffer(sizeof(glm::mat4) * 2);
 
     // Mesh import and vertex buffer creation etc.
-    auto importedMeshData = importMeshFromFile("assets/test.glb");
-    auto thumbnailTexture = createThumbnailForMesh(importedMeshData, editorState.graphics.shaderProgram3D,
-        editorState.graphics.objectTransformBuffer, editorState.graphics.cameraTransformBuffer, editorState.vertexAttributes, 128, 128);
-    auto meshGroup = new MeshGroup();
-    for (auto im : importedMeshData) {
-        auto mesh = im->toMesh();
-        mesh->thumbnail = thumbnailTexture;
-        // Now we decide which attributes to link with:
-        // For skeletal meshes with animations we use the gpu vertex skinned version, otherwise the "default one":
-        if (mesh->skeleton != nullptr && mesh->skeleton->animations.size() > 0) {
-            describeVertexAttributes(vertexAttributesAnimated, mesh->meshVertexBuffer, editorState.graphics.animatedShaderProgram, mesh->meshVertexArray);
-        } else {
-            describeVertexAttributes(vertexAttributes, mesh->meshVertexBuffer, editorState.graphics.shaderProgram, mesh->meshVertexArray);
-        }
-        editorState.meshPool[im->meshName] = mesh;
-        meshGroup->meshes.push_back(mesh);
-    }
-    editorState.importedMeshGroups.push_back(meshGroup);
-
-    // {
-    //     auto importedTestMesh = importMeshFromFile("assets/test4.glb")[0]->toMesh();
-    //     gameState.meshPool["testmesh4"] = importedTestMesh;
-    //     describeVertexAttributes(vertexAttributes, importedTestMesh->meshVertexBuffer, gameState.graphics.shaderProgram, importedTestMesh->meshVertexArray);
+    // auto importedMeshData = importMeshFromFile("assets/test.glb");
+    // auto thumbnailTexture = createThumbnailForMesh(importedMeshData, editorState.graphics.shaderProgram3D,
+    //     editorState.graphics.objectTransformBuffer, editorState.graphics.cameraTransformBuffer, editorState.vertexAttributes, 128, 128);
+    // auto meshGroup = new MeshGroup();
+    // for (auto im : importedMeshData) {
+    //     auto mesh = im->toMesh();
+    //     mesh->thumbnail = thumbnailTexture;
+    //     // Now we decide which attributes to link with:
+    //     // For skeletal meshes with animations we use the gpu vertex skinned version, otherwise the "default one":
+    //     if (mesh->skeleton != nullptr && mesh->skeleton->animations.size() > 0) {
+    //         describeVertexAttributes(vertexAttributesAnimated, mesh->meshVertexBuffer, editorState.graphics.animatedShaderProgram, mesh->meshVertexArray);
+    //     } else {
+    //         describeVertexAttributes(vertexAttributes, mesh->meshVertexBuffer, editorState.graphics.shaderProgram, mesh->meshVertexArray);
+    //     }
+    //     editorState.meshPool[im->meshName] = mesh;
+    //     meshGroup->meshes.push_back(mesh);
     // }
+    // editorState.importedMeshGroups.push_back(meshGroup);
 
-    // Joint debug mesh import
-    // {
-    //     gameState.graphics.jointDebugMesh =  importMeshFromFile("assets/joint_debug_mesh.glb")[0]->toMesh();
-    //     describeVertexAttributes(vertexAttributes, gameState.graphics.jointDebugMesh->meshVertexBuffer, gameState.graphics.shaderProgram, gameState.graphics.jointDebugMesh->meshVertexArray);
-    //
-    // }
 
-    auto heroGo = new GameObject();
-    for (auto mesh : std::ranges::views::values(editorState.meshPool)) {
-        heroGo->renderData.meshes.push_back(mesh);
+    // Root game object creation:
+    // Holds all "real" user created game objects:
+    editorState.rootGameObject = new GameObject();
+    editorState.rootGameObject->name = "Root";
 
-    }
-    heroGo->transform.position = glm::vec3(0, 0, 0);
-
-    editorState.gameObjects.push_back(heroGo);
+    // Create a few test game objects
+    createTestGameObjects(editorState);
 
     editorState.graphics.quadVertexArray = createVertexArray();
     bindVertexArray(editorState.graphics.quadVertexArray);
@@ -1235,9 +1326,8 @@ void initEditor(EditorState& editorState) {
     editorState.texturePool["gray_bg"] = createTextureFromFile("assets/gray_bg.png");
     editorState.texturePool["light_gray_bg"] = createTextureFromFile("assets/light_gray_bg.png");
     editorState.texturePool["mid_blue_bg"] = createTextureFromFile("assets/mid_blue_bg.png");
-
-    // Create some test tabs:
-    //createTestDummyTabs(editorState);
+    editorState.texturePool["expand_start"] = createTextureFromFile("assets/expand_start.png");
+    editorState.texturePool["expand_active"] = createTextureFromFile("assets/expand_active.png");
 
 
 }

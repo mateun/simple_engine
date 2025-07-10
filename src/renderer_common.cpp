@@ -400,6 +400,7 @@ Mesh * createTextMesh(GraphicsHandle fontHandle, const std::string &text) {
     }
     Mesh *textMesh = new Mesh();
     textMesh->index_count = textData->indicesFlat.size();
+    textMesh->creation_index_count = textData->indicesFlat.size();
     textMesh->meshVertexArray = createVertexArray();
     textMesh->meshVertexBuffer = createVertexBuffer(textVertexList.data(), textVertexList.size() * sizeof(float), sizeof(float) * 5, BufferUsage::Dynamic);
     associateVertexBufferWithVertexArray(textMesh->meshVertexBuffer, textMesh->meshVertexArray);
@@ -418,7 +419,7 @@ Mesh * createTextMesh(GraphicsHandle fontHandle, const std::string &text) {
 }
 
 void updateText(Mesh &textMesh, GraphicsHandle fontHandle, const std::string &text) {
-    auto oldSize = textMesh.index_count * sizeof(uint32_t) * 2;
+    auto oldSize = textMesh.index_count;
 
     auto textData = renderTextIntoQuadGeometry(fontHandle, text);
     std::vector<float> textVertexList;
@@ -429,9 +430,12 @@ void updateText(Mesh &textMesh, GraphicsHandle fontHandle, const std::string &te
         textVertexList.push_back(textData->uvMasterList[i].x);
         textVertexList.push_back(textData->uvMasterList[i].y);
     }
-    auto newSize = textData->indicesFlat.size() * sizeof(uint32_t);
-    if (newSize > oldSize) {
-        exit(1);
+
+    // TODO we should replace this with a function which checks against the actual
+    // original vertex buffer size. Because, as long as we are within these bounds, we are fine.
+    auto new_index_count = textData->indicesFlat.size();
+    if (new_index_count > textMesh.creation_index_count) {
+         exit(1);
     }
     textMesh.index_count = textData->indicesFlat.size();
     updateBuffer(textMesh.meshVertexBuffer, BufferType::Vertex, textVertexList.data(), textVertexList.size() * sizeof(float));
