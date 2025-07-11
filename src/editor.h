@@ -49,6 +49,7 @@ struct alignas(16) ObjectTransformBuffer {
 
 struct EditorState {
 
+    Win32Window* window;
     std::map<std::string, MeshGroup*> meshPool;
     std::map<std::string, GraphicsHandle> texturePool;
 
@@ -105,6 +106,7 @@ struct EditorState {
     std::vector<VertexAttributeDescription> vertexAttributesAnimated;
     std::vector<VertexAttributeDescription> vertexAttributes;
     std::vector<Tab*> mainTabs;
+    std::vector<MenuItem*> topMenuItems;
     std::string currentMainTabTitle;
     float assetVBrowserVScrollOffset = 0;
     int assetVBrowserVScrollPosition = 0;
@@ -117,7 +119,7 @@ struct EditorState {
     std::vector<GameObject*> visibleGameObjectsWithChildrenTreeItems;
     GameObject* currentHoverExpandItem;
     GameObject* currentSelectedGameObjectTreeItem = nullptr;
-
+    MenuItem* currentHoverMenuItem = nullptr;
 };
 
 #endif //GAME_H

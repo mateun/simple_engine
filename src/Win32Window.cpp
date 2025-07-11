@@ -4,12 +4,15 @@
 #include <string>
 #include <windowsx.h>
 
+static bool in_size_move = false;
 static bool lbuttonDown = false;
 static bool lbuttonUp = false;
 static bool leftDoubleClick = false;
 static int mouse_x = 0;
 static int mouse_y = 0;
 static bool useMouse = true;
+static int resized_width = 0;
+static int resized_height = 0;
 static int timer_token_counter = 0;
 std::map<int, LARGE_INTEGER> timer_tokens;
 static WPARAM last_key_press_ = 0;
@@ -28,6 +31,14 @@ int winMouseX() {
 
 int winMouseY() {
     return mouse_y;
+}
+
+int resizedWidth() {
+    return resized_width;
+}
+
+int resizedHeight() {
+    return resized_height;
 }
 
 
@@ -72,6 +83,37 @@ LRESULT CALLBACK Win32Window::wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             }
             break;
 
+        case WM_SIZE:
+
+            resized_width = LOWORD(lParam);
+            resized_height = HIWORD(lParam);
+
+
+
+            // switch (wParam) {
+            //     case SIZE_RESTORED:
+            //         // Handle normal resize
+            //
+            //         break;
+            //     case SIZE_MINIMIZED:
+            //         // Handle minimization
+            //
+            //         break;
+            //     case SIZE_MAXIMIZED:
+            //         // Handle maximization
+            //
+            //         break;
+            // }
+            break;
+
+        // case WM_ENTERSIZEMOVE:
+        //     in_size_move = true;
+        //     break;
+        //
+        // case WM_EXITSIZEMOVE:
+        //     in_size_move = false;
+        //     break;
+
         case WM_LBUTTONDBLCLK:
             leftDoubleClick = true;
             break;
@@ -95,6 +137,9 @@ LRESULT CALLBACK Win32Window::wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 Win32Window::Win32Window(HINSTANCE hInstance, int nCmdShow, const std::wstring& title, int width, int height) : hInstance_(hInstance),
     width_(width), height_(height) {
+    resized_width = width;
+    resized_height = height;
+
     const wchar_t CLASS_NAME[] = L"SampleWin32WindowClass";
 
     WNDCLASSEXW wc = {};

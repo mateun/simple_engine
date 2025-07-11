@@ -18,6 +18,7 @@
 #include "glm/detail/type_quat.hpp"
 #include "glm/ext/matrix_clip_space.hpp"
 #include "glm/ext/matrix_transform.hpp"
+#include <filesystem>
 
 static int nextHandleId = 0;
 static std::map<int, Font> fontMap;
@@ -450,4 +451,10 @@ glm::quat aiToGLM(aiQuaternion aiQuat) {
 
 glm::vec3 aiToGLM(aiVector3D v) {
     return glm::vec3(v.x, v.y, v.z);
+}
+
+std::string fileNameFromPath(const std::string &filePath) {
+    auto fp = std::filesystem::path(filePath);
+    return fp.filename().string();
+
 }

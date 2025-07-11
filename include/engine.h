@@ -8,6 +8,7 @@
 #define GRAPHICS_H
 
 #include <deque>
+#include <functional>
 #include <stb_truetype.h>
 #include <vector>
 #include <map>
@@ -150,6 +151,7 @@ enum class BufferType {
  */
 struct MeshGroup {
     std::vector<Mesh*> meshes;
+    std::string name;
 };
 
 struct BoundingBox {
@@ -185,6 +187,15 @@ struct Tab {
     // we don't know the real structure of a "script" yet.
     std::string script;
     BoundingBox renderBoundingBox;
+};
+
+struct EditorState;
+struct MenuItem {
+    std::string name;
+    Mesh* textMesh = nullptr;
+    BoundingBox renderBoundingBox = {};
+    std::function<void(EditorState&)> action;
+
 };
 
 struct Mesh {
@@ -313,8 +324,11 @@ MeshData* renderTextIntoQuadGeometry(GraphicsHandle fontHandle, const std::strin
 std::vector<MeshData*> importMeshFromFile(const std::string& fileName);
 std::wstring showFileDialog(const std::wstring& typeFilter);
 BoundingBox measureText(GraphicsHandle fontHandle, const std::string& text);
+GraphicsHandle beginRenderAnnotation(std::wstring name);
+std::string fileNameFromPath(const std::string& filePath);
 
 void initGraphics(Win32Window& window, bool msaa, int msaa_samples);
+
 void clear(float r, float g, float b, float a);
 void clearFrameBuffer(GraphicsHandle fbHandle, float r, float g, float b, float a);
 void describeVertexAttributes(std::vector<VertexAttributeDescription>& attributeDescriptions,  GraphicsHandle bufferHandle, GraphicsHandle shaderProgramHandle, GraphicsHandle vertexArrayHandle);
@@ -331,11 +345,14 @@ void uploadConstantBufferData(GraphicsHandle bufferHandle, void* data, uint32_t 
 void renderGeometry(PrimitiveType primitiveType);
 void updateText(Mesh& textMesh, GraphicsHandle fontHandle, const std::string& text);
 void updateBuffer(GraphicsHandle bufferHandle, BufferType bufferType, void* data, uint32_t size_in_bytes);
+void resizeSwapChain(HWND hwnd, int width, int height);
+void resizeFrameBuffer(GraphicsHandle fbHandle, int width, int height);
 void copyTexture(GraphicsHandle targetTexture, GraphicsHandle sourceTexture);
 void setFillMode(FillMode mode);
 void setFrontCulling(bool front);
 void setDepthTesting(bool on);
 void enableBlending(bool enable);
+void endRenderAnnotation(GraphicsHandle annotationHandle);
 void setViewport(int originX, int originY, int width, int height);
 void renderGeometryIndexed(PrimitiveType primitiveType, int count, int startIndex);
 void present();
@@ -360,6 +377,8 @@ bool mouseLeftDoubleClick();
 bool mouseLeftClick();
 bool isKeyDown(int key);
 bool keyPressed(int key);
+int resizedWidth();
+int resizedHeight();
 
 #include <Windows.h>
 
