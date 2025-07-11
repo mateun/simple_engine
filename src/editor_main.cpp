@@ -304,10 +304,9 @@ Tab* findTabByTitle(const std::vector<Tab *> & tabs, const std::string & title) 
 void renderMeshEditor(int originX, int originY, int width, int height, EditorState & editorState, MeshGroup* meshGroup) {
     setFrontCulling(false);
 
-    // bindShaderProgram(editorState.graphics.shaderProgram3D);
-    // bindFrameBuffer(editorState.graphics.frameBuffer3DPanel, 0, 0, width, height);
-    // clearFrameBuffer(editorState.graphics.frameBuffer3DPanel, .0, .0, 0.0, 1);
-    // uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.perspectiveCamera->matrixBufferPtr(), sizeof(glm::mat4) * 2, 1);
+    bindFrameBuffer(editorState.graphics.frameBuffer3DPanel, 0, 0, width, height);
+    clearFrameBuffer(editorState.graphics.frameBuffer3DPanel, .0, .0, 0.0, 1);
+
 
     // Animation timing
     static float animationTime = 0.0f;
@@ -403,7 +402,6 @@ void renderMeshEditor(int originX, int originY, int width, int height, EditorSta
             bindShaderProgram(editorState.graphics.shaderProgram3D);
         }
         bindFrameBuffer(editorState.graphics.frameBuffer3DPanel, 0, 0, width, height);
-        clearFrameBuffer(editorState.graphics.frameBuffer3DPanel, .0, .0, 0.0, 1);
         bindVertexArray(mesh->meshVertexArray);
         uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.perspectiveCamera->matrixBufferPtr(), sizeof(glm::mat4) * 2, 1);
         if (mesh->diffuseTexture.id != -1) {

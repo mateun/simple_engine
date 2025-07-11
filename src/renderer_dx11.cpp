@@ -10,13 +10,12 @@
 #include <d3dcompiler.h>
 #include <DirectXMath.h>
 #include <dxgi.h>
-#include <dxgi1_2.h>
+#include <dxgi1_4.h>
 #include <iostream>
 #include <map>
 #include <vector>
 #include <ostream>
 #include <stb_image.h>
-
 #include "glm/ext/matrix_transform.hpp"
 #include "glm/gtc/type_ptr.hpp"
 
@@ -211,34 +210,33 @@ void createSwapChain(HWND hwnd, int width, int height) {
         exit(1);
     }
 
-    IDXGIFactory* pFactory = nullptr;
-    hr= pDXGIAdapter->GetParent(__uuidof(IDXGIFactory), (void**)&pFactory);
-    if (FAILED(hr)) {
-        exit(1);
-    }
+     IDXGIFactory* pFactory = nullptr;
+     hr= pDXGIAdapter->GetParent(__uuidof(IDXGIFactory), (void**)&pFactory);
+     if (FAILED(hr)) {
+         exit(1);
+     }
 
 
 
 
-    // Dxfactory1 creation code:
-    DXGI_SWAP_CHAIN_DESC sd;
-    sd.BufferDesc.Width  = width;
-    sd.BufferDesc.Height = height;
-    sd.BufferDesc.RefreshRate.Numerator = 60;
-    sd.BufferDesc.RefreshRate.Denominator = 1;
-    sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    sd.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
-    sd.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
-    sd.SampleDesc.Count   = 1;
-    sd.SampleDesc.Quality = 0;
-    sd.BufferUsage  = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    sd.BufferCount  = 1;
-    sd.OutputWindow = hwnd;
-    sd.Windowed     = true;
-    sd.SwapEffect   = DXGI_SWAP_EFFECT_DISCARD;
-    sd.Flags        = 0;
-
-    //result = pFactory->CreateSwapChain(device, &sd, &swapChain );
+     // // Dxfactory1 creation code:
+     // DXGI_SWAP_CHAIN_DESC sd;
+     // sd.BufferDesc.Width  = width;
+     // sd.BufferDesc.Height = height;
+     // sd.BufferDesc.RefreshRate.Numerator = 60;
+     // sd.BufferDesc.RefreshRate.Denominator = 1;
+     // sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+     // sd.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+     // sd.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+     // sd.SampleDesc.Count   = 1;
+     // sd.SampleDesc.Quality = 0;
+     // sd.BufferUsage  = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+     // sd.BufferCount  = 1;
+     // sd.OutputWindow = hwnd;
+     // sd.Windowed     = true;
+     // sd.SwapEffect   = DXGI_SWAP_EFFECT_DISCARD;
+     // sd.Flags        = 0;
+    // result = pFactory->CreateSwapChain(device, &sd, &swapChain );
 
     result = pFactory2->CreateSwapChainForHwnd(device, hwnd, &scdesc1, &fsdesc, nullptr, &swapChain1);
     if (FAILED(result)) {
@@ -246,8 +244,19 @@ void createSwapChain(HWND hwnd, int width, int height) {
         exit(1);
     }
 
+    // Set sRGB color space
+    IDXGISwapChain3* swapChain3;
+    result = swapChain1->QueryInterface(IID_PPV_ARGS(&swapChain3));
+    if (SUCCEEDED(result)) {
+        result = swapChain3->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709); // sRGB
+        if (FAILED(result)) {
+            std::cout << "Failed to set color space: 0x" << std::hex << result << std::endl;
+        }
+    }
 
-    pFactory->Release();
+
+    pFactory2->Release();
+    //pFactory->Release();
     pDXGIAdapter->Release();
     pDXGIDevice->Release();
 
@@ -507,8 +516,14 @@ GraphicsHandle createTexture(int width, int height, uint8_t *pixels, uint8_t num
         exit(1);
     }
 
+    D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.Format = getFormatByChannelNumber(num_channels);;
+    srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Texture2D.MostDetailedMip = 0;
+    srvDesc.Texture2D.MipLevels = 1;
+
     ID3D11ShaderResourceView *srv = nullptr;
-    res = device->CreateShaderResourceView(texture, NULL, &srv);
+    res = device->CreateShaderResourceView(texture, &srvDesc, &srv);
     assert(SUCCEEDED(res));
 
     GraphicsHandle handle = {nextHandleId++};
@@ -651,7 +666,7 @@ void resizeSwapChain(HWND hwnd, int width, int height) {
     DXGI_MODE_DESC modeDesc = {};
     modeDesc.Width = width;
     modeDesc.Height = height;
-    modeDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    modeDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     modeDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
     modeDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
     auto result = swapChain1->ResizeTarget(&modeDesc);
@@ -660,7 +675,7 @@ void resizeSwapChain(HWND hwnd, int width, int height) {
         exit(1);
     }
 
-    result = swapChain1->ResizeBuffers(0, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
+    result = swapChain1->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
     if (FAILED(result)) {
         std::cout << "backbuffer resizing on swapchain resizing failed" << std::to_string(result) << std::endl;
         exit(1);
