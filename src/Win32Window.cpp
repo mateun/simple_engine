@@ -89,7 +89,6 @@ LRESULT CALLBACK Win32Window::wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             resized_height = HIWORD(lParam);
 
 
-
             // switch (wParam) {
             //     case SIZE_RESTORED:
             //         // Handle normal resize
@@ -106,13 +105,13 @@ LRESULT CALLBACK Win32Window::wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             // }
             break;
 
-        // case WM_ENTERSIZEMOVE:
-        //     in_size_move = true;
-        //     break;
-        //
-        // case WM_EXITSIZEMOVE:
-        //     in_size_move = false;
-        //     break;
+        case WM_ENTERSIZEMOVE:
+            in_size_move = true;
+            break;
+
+        case WM_EXITSIZEMOVE:
+            in_size_move = false;
+            break;
 
         case WM_LBUTTONDBLCLK:
             leftDoubleClick = true;

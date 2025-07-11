@@ -1066,13 +1066,19 @@ void check_resizing(EditorState& editorState) {
         editorState.orthoCamera->view_matrix = glm::mat4(1);
         editorState.orthoCamera->projection_matrix = (glm::orthoLH_ZO<float>(0, editorState.screen_width,  editorState.screen_height, 0.0f, 0.0, 50));
 
-        //editorState.graphics.frameBuffer3DPanel = createFrameBuffer(editorState.screen_width - 200 * 2, editorState.screen_height - 64, true);
-        // editorState.graphics.frameBufferMainTabPanel = createFrameBuffer(editorState.screen_width - 200 * 2, 32 , true);
-         resizeFrameBuffer(editorState.graphics.frameBufferTopMenu, new_width, 32);
-        // editorState.graphics.frameBufferStatusBar = createFrameBuffer(editorState.screen_width, 32, true);
-        // editorState.graphics.frameBufferGameObjectTree = createFrameBuffer(200, editorState.screen_height-64, true);
-        // editorState.graphics.frameBufferAssetPanel = createFrameBuffer(200, editorState.screen_height-64, true);
-        // editorState.graphics.frameBufferAnimationPanel = createFrameBuffer(editorState.screen_width - 200 * 2, 200, true);
+        editorState.perspectiveCamera->location = {0, 2, -2};
+        editorState.perspectiveCamera->lookAtTarget = {0, 0, 3};
+        editorState.perspectiveCamera->view_matrix =editorState.perspectiveCamera->updateAndGetViewMatrix();
+        editorState.perspectiveCamera->projection_matrix = editorState.perspectiveCamera->updateAndGetPerspectiveProjectionMatrix(65,
+            editorState.screen_width, editorState.screen_height, 0.1, 100);
+
+        resizeFrameBuffer(editorState.graphics.frameBuffer3DPanel, editorState.screen_width - 200 * 2, editorState.screen_height - 64);
+        resizeFrameBuffer(editorState.graphics.frameBufferMainTabPanel, editorState.screen_width - 200 * 2, 32);
+        resizeFrameBuffer(editorState.graphics.frameBufferTopMenu, new_width, 32);
+        resizeFrameBuffer(editorState.graphics.frameBufferStatusBar, editorState.screen_width, 32);
+        resizeFrameBuffer(editorState.graphics.frameBufferGameObjectTree, 200, editorState.screen_height-64);
+        resizeFrameBuffer(editorState.graphics.frameBufferAssetPanel, 200, editorState.screen_height-64);
+        resizeFrameBuffer(editorState.graphics.frameBufferAnimationPanel, editorState.screen_width - 200 * 2, 200);
     }
 }
 

@@ -22,7 +22,8 @@
 
 static ID3D11Device *device;
 static ID3D11DeviceContext *ctx;
-static IDXGISwapChain1 *swapChain;
+static IDXGISwapChain *swapChain;
+static IDXGISwapChain1 *swapChain1;
 static ID3D11Debug *debugger;
 static ID3D11Texture2D *backBuffer;
 static ID3D11RenderTargetView *rtv;
@@ -177,7 +178,7 @@ void createDefaultDepthStencilBuffer(int width, int height) {
 
 void createSwapChain(HWND hwnd, int width, int height) {
 
-
+    // These are descriptions needed for a new swapchain1 specified SC:
     DXGI_SWAP_CHAIN_DESC1 scdesc1 = {};
     scdesc1.Width = width;
     scdesc1.Height = height;
@@ -191,34 +192,67 @@ void createSwapChain(HWND hwnd, int width, int height) {
     scdesc1.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
     scdesc1.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
     scdesc1.Flags = 0;
+    DXGI_SWAP_CHAIN_FULLSCREEN_DESC fsdesc = {};
+    fsdesc.Windowed = TRUE;
+    // fsdesc.RefreshRate.Numerator = 60;
+    // fsdesc.RefreshRate.Denominator = 1;
+    fsdesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+    fsdesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
 
     IDXGIDevice * pDXGIDevice = nullptr;
     auto result = device->QueryInterface(__uuidof(IDXGIDevice), (void **)&pDXGIDevice);
+
     IDXGIAdapter * pDXGIAdapter = nullptr;
     result = pDXGIDevice->GetAdapter(&pDXGIAdapter);
-
+    //
     IDXGIFactory2* pFactory2 = nullptr;
     auto hr= pDXGIAdapter->GetParent(__uuidof(IDXGIFactory2), (void**)&pFactory2);
     if (FAILED(hr)) {
         exit(1);
     }
 
-    DXGI_SWAP_CHAIN_FULLSCREEN_DESC fsdesc = {};
-    fsdesc.Windowed = TRUE;
-    fsdesc.RefreshRate.Numerator = 60;
-    fsdesc.RefreshRate.Denominator = 1;
-    fsdesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
-    fsdesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
-    result = pFactory2->CreateSwapChainForHwnd(pDXGIDevice, hwnd, &scdesc1, &fsdesc, nullptr, &swapChain);
+    IDXGIFactory* pFactory = nullptr;
+    hr= pDXGIAdapter->GetParent(__uuidof(IDXGIFactory), (void**)&pFactory);
+    if (FAILED(hr)) {
+        exit(1);
+    }
+
+
+
+
+    // Dxfactory1 creation code:
+    DXGI_SWAP_CHAIN_DESC sd;
+    sd.BufferDesc.Width  = width;
+    sd.BufferDesc.Height = height;
+    sd.BufferDesc.RefreshRate.Numerator = 60;
+    sd.BufferDesc.RefreshRate.Denominator = 1;
+    sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    sd.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+    sd.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+    sd.SampleDesc.Count   = 1;
+    sd.SampleDesc.Quality = 0;
+    sd.BufferUsage  = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    sd.BufferCount  = 1;
+    sd.OutputWindow = hwnd;
+    sd.Windowed     = true;
+    sd.SwapEffect   = DXGI_SWAP_EFFECT_DISCARD;
+    sd.Flags        = 0;
+
+    //result = pFactory->CreateSwapChain(device, &sd, &swapChain );
+
+    result = pFactory2->CreateSwapChainForHwnd(device, hwnd, &scdesc1, &fsdesc, nullptr, &swapChain1);
     if (FAILED(result)) {
         std::cout << "error creating swapchain 0x%08X" << std::to_string(result) << std::endl;
         exit(1);
     }
 
-    pFactory2->Release();
-    // pIDXGIFactory->Release();
+
+    pFactory->Release();
     pDXGIAdapter->Release();
     pDXGIDevice->Release();
+
+    resizeSwapChain(hwnd, width, height);
+    return;
 
     // Create a backbuffer
     result = swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
@@ -335,7 +369,8 @@ void initGraphics(Win32Window& window, bool msaa, int msaa_samples) {
 
 
     UINT ql;
-    device->CheckMultisampleQualityLevels(DXGI_FORMAT_R8G8B8A8_UNORM, 8, &ql);
+    device->CheckMultisampleQualityLevels(DXGI_FORMAT_R8G8B8A8_UNORM, 4, &ql);
+    assert(ql > 0);
 
 
     createSwapChain(window.get_hwnd(), w, h);
@@ -413,7 +448,8 @@ void initGraphics(Win32Window& window, bool msaa, int msaa_samples) {
 }
 #include <comdef.h>
 void present() {
-    auto hr = swapChain->Present(0, 0);
+    auto sc = swapChain ? swapChain : swapChain1;
+    auto hr = swapChain1->Present(0, 0);
     if (FAILED(hr)) {
         _com_error err(hr);
         std::wcerr << L"Present failed: " << _com_error(hr).ErrorMessage() << std::endl;
@@ -591,8 +627,13 @@ void resizeSwapChain(HWND hwnd, int width, int height) {
         depthStencilView = nullptr;
     }
 
+    if (depthStencilBuffer) {
+        depthStencilBuffer->Release();
+        depthStencilBuffer = nullptr;
+    }
 
-    auto hr = swapChain->Present(0, 0);
+
+    auto hr = swapChain1->Present(0, 0);
     if (FAILED(hr)) {
         exit(2);
     }
@@ -601,7 +642,7 @@ void resizeSwapChain(HWND hwnd, int width, int height) {
     // height = 720;
 
     DXGI_SWAP_CHAIN_DESC desc;
-    swapChain->GetDesc(&desc);
+    swapChain1->GetDesc(&desc);
     std::cout << "Swap chain state: BufferCount=" << desc.BufferCount
               << ", Format=" << desc.BufferDesc.Format
               << ", Windowed=" << (desc.Windowed ? "Yes" : "No")
@@ -613,25 +654,30 @@ void resizeSwapChain(HWND hwnd, int width, int height) {
     modeDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
     modeDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
     modeDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
-    auto result = swapChain->ResizeTarget(&modeDesc);
+    auto result = swapChain1->ResizeTarget(&modeDesc);
     if (FAILED(result)) {
         std::cout << "backbuffer target resizing failed" << std::to_string(result) << std::endl;
         exit(1);
     }
 
-    result = swapChain->ResizeBuffers(0, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
+    result = swapChain1->ResizeBuffers(0, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
     if (FAILED(result)) {
         std::cout << "backbuffer resizing on swapchain resizing failed" << std::to_string(result) << std::endl;
         exit(1);
     }
 
-    result = swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
+    result = swapChain1->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
     if (FAILED(result)) {
         std::cout << "backbuffer creation/retrieval on swapchain resizing failed" << std::endl;
         exit(1);
     }
 
     // Step 4: Create new render target view
+    D3D11_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+    rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+    rtvDesc.Texture2D.MipSlice = 0;
+
     result = device->CreateRenderTargetView(backBuffer, nullptr, &rtv);
     backBuffer->Release(); // Release temporary back buffer pointer
     if (FAILED(result)) {
