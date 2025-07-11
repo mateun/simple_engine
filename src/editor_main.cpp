@@ -20,6 +20,7 @@
 static float frame_time = 0.0f;
 
 void render3DScenePanel(int originX, int originY, int width, int height, EditorState & editorState);
+void blitFramebufferToScreen(GraphicsHandle framebuffer, EditorState& editorState, int width, int height, int originX, int originY, float depth);
 
 void clear_screen(int width, int height, Win32Window& window, uint32_t *pixels32) {
     auto start_clear = window.performance_count();
@@ -102,71 +103,40 @@ Camera activateOrthoCameraForPanel(int width, int height, EditorState& editorSta
     return cam;
 }
 
-void renderTopMenu(int originX, int originY, int width, int height, EditorState& gameState) {
-    {
-        // Render topmenu
-        setFrontCulling(true);
-        bindVertexArray(gameState.graphics.quadVertexArray);
-        bindFrameBuffer(gameState.graphics.frameBufferTopMenu, 0, 0, width, height);
-        clearFrameBuffer(gameState.graphics.frameBufferTopMenu, 0.1, .1, 0.11, 1);
+void renderTopMenu(int originX, int originY, int width, int height, EditorState& editorState) {
 
-        // Specific projection cam for this panel:
-        Camera cam;
-        cam.view_matrix = glm::mat4(1);
-        cam.projection_matrix = glm::orthoLH_ZO<float>(0.0f, (float) width, (float) height, 0.0f, 0.0, 30);
-        uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, cam.matrixBufferPtr(), sizeof(Camera), 1);
+    // Render topmenu
+    setFrontCulling(true);
+    bindVertexArray(editorState.graphics.quadVertexArray);
+    bindFrameBuffer(editorState.graphics.frameBufferTopMenu, 0, 0, width, height);
+    clearFrameBuffer(editorState.graphics.frameBufferTopMenu, 0.1, .1, 0.11, 1);
 
-        // Render menu texts
-        enableBlending(true);
-        bindShaderProgram(gameState.graphics.textShaderProgram);
-        auto textMesh = gameState.menuTextMeshes.tmFile;
-        bindVertexArray(textMesh->meshVertexArray);
-        bindTexture(getTextureFromFont(gameState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
-        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
-        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(8, 24, 1)) *  scaleMatrix;
-        uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+    // Specific projection cam for this panel:
+    Camera cam;
+    cam.view_matrix = glm::mat4(1);
+    cam.projection_matrix = glm::orthoLH_ZO<float>(0.0f, (float) width, (float) height, 0.0f, 0.0, 30);
+    uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, cam.matrixBufferPtr(), sizeof(Camera), 1);
 
-        // Import Model menu item:
-        textMesh = gameState.menuTextMeshes.tmModelImport;
-        bindVertexArray(textMesh->meshVertexArray);
-        scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
-        worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(64, 24, 1)) *  scaleMatrix;
-        uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+    // Render menu texts
+    enableBlending(true);
+    bindShaderProgram(editorState.graphics.textShaderProgram);
+    auto textMesh = editorState.menuTextMeshes.tmFile;
+    bindVertexArray(textMesh->meshVertexArray);
+    bindTexture(getTextureFromFont(editorState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
+    auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+    auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(8, 24, 1)) *  scaleMatrix;
+    uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+    renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
 
+    // Import Model menu item:
+    textMesh = editorState.menuTextMeshes.tmModelImport;
+    bindVertexArray(textMesh->meshVertexArray);
+    scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+    worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(64, 24, 1)) *  scaleMatrix;
+    uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+    renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
 
-
-        // Draw to default backbuffer
-        enableBlending(false);
-        bindDefaultBackbuffer(0, 0, gameState.screen_width, gameState.screen_height);
-        bindVertexArray(gameState.graphics.quadVertexArray);
-        bindShaderProgram(gameState.graphics.shaderProgram);
-        bindFrameBufferTexture(gameState.graphics.frameBufferTopMenu, 0);
-        uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
-        scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1));
-        worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(originX, originY, 0.9)) * scaleMatrix;
-        //setFrontCulling(false);
-        uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
-    }
-
-    // Render frametime:
-    // Currently directly into the main framebuffer - TODO change?!
-        // bindShaderProgram(gameState.graphics.textShaderProgram);
-        // uploadConstantBufferData( gameState.graphics.cameraTransformBuffer, gameState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
-        //
-        // auto textMesh = gameState.textMesh;
-        // updateText(*textMesh, gameState.graphics.fontHandle, "FTus: " + std::to_string(gameState.frameTimer->getAverage() * 1000 * 1000));
-        // bindVertexArray(textMesh->meshVertexArray);
-        // bindTexture(getTextureFromFont(gameState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
-        // auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        // auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
-        // auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0, 64, 1)) * rotationMatrix * scaleMatrix;
-        // uploadConstantBufferData( gameState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-        // renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
-    // End text rendering
-
+    blitFramebufferToScreen(editorState.graphics.frameBufferTopMenu, editorState, width, height, originX, originY, 0.9);
 
 }
 
@@ -248,8 +218,8 @@ void renderGameObjectTree(int originX, int originY, int width, int height, Edito
         setFrontCulling(true);
         bindVertexArray(editorState.graphics.quadVertexArray);
         bindShaderProgram(editorState.graphics.shaderProgram);
-        bindFrameBuffer(editorState.graphics.frameBufferSceneTree, 0, 0, width, height);
-        clearFrameBuffer(editorState.graphics.frameBufferSceneTree, .1, .1, 0.1, 1);
+        bindFrameBuffer(editorState.graphics.frameBufferGameObjectTree, 0, 0, width, height);
+        clearFrameBuffer(editorState.graphics.frameBufferGameObjectTree, .1, .1, 0.1, 1);
         bindTexture(editorState.graphics.textureHandle, 0);
         Camera sceneTreeCamera;
         sceneTreeCamera.view_matrix = glm::mat4(1);
@@ -287,19 +257,8 @@ void renderGameObjectTree(int originX, int originY, int width, int height, Edito
         editorState.visibleGameObjectsWithChildrenTreeItems.clear();
         renderGameObjectsRecursive(editorState, nullptr, 0);
 
+        blitFramebufferToScreen(editorState.graphics.frameBufferGameObjectTree, editorState, width, height, originX, originY, 2);
 
-        // Render the framebuffer as a quad somewhere on the screen:
-        enableBlending(false);
-        bindDefaultBackbuffer(0, 0, editorState.screen_width, editorState.screen_height);
-        bindVertexArray(editorState.graphics.quadVertexArray);
-        bindShaderProgram(editorState.graphics.shaderProgram);
-        bindFrameBufferTexture(editorState.graphics.frameBufferSceneTree, 0);
-        uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
-        scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1));
-        auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(originX, originY, 2)) * rotationMatrix * scaleMatrix;
-        uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
 }
 
 
@@ -382,7 +341,6 @@ void renderMeshEditor(int originX, int originY, int width, int height, EditorSta
 
                     joint->poseLocalTransform = translate(glm::mat4(1.0f), p) * glm::toMat4(q) *
                         glm::scale(glm::mat4(1.0f), s);
-
                 }
 
                 // Now calculate the global pose for each joint:
@@ -407,11 +365,28 @@ void renderMeshEditor(int originX, int originY, int width, int height, EditorSta
                 uploadConstantBufferData( editorState.graphics.skinningMatricesCBuffer, framePalette.data(), sizeof(glm::mat4) * framePalette.size(), 2);
 
 
+
+                }
+
+            // Make all animations selectable
+            float vOffsetAnimationName = 0;
+            for (auto animation : mesh->skeleton->animations) {
+                // bindShaderProgram(editorState.graphics.textShaderProgram);
+                // auto textMesh = editorState.textMesh;
+                // updateText(*textMesh, editorState.graphics.fontHandle, animation->name.c_str());
+                // bindVertexArray(textMesh->meshVertexArray);
+                // bindTexture(getTextureFromFont(editorState.graphics.fontHandle), 0); // This is not the texture, but the font handle, which carries the texture.
+                // auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+                // auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(24, 18, 1)) *  scaleMatrix;
+                // uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+                // renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+
             }
+
         }
 
         static float roto = 0.0f;
-        roto += 5.0f * frame_time;
+        roto += 0.0f * frame_time;
         auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(roto), glm::vec3(0.0f, 1.0f, 0.0f));
         auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
         auto worldMatrix = glm::translate(glm::mat4(1.0f), {0, 0, 0}) * rotationMatrix * scaleMatrix;
@@ -419,28 +394,8 @@ void renderMeshEditor(int originX, int originY, int width, int height, EditorSta
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, mesh->index_count, 0);
     }
 
+    blitFramebufferToScreen(editorState.graphics.frameBuffer3DPanel, editorState, width, height, 200+width/2, 32 + height/2, 0.9);
 
-
-    // Render the 3D panel framebuffer as quad
-    {
-
-
-        bindDefaultBackbuffer(0, 0, editorState.screen_width, editorState.screen_height);
-        bindFrameBufferTexture(editorState.graphics.frameBuffer3DPanel, 0);
-        uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
-
-        bindVertexArray(editorState.graphics.quadVertexArray);
-        bindShaderProgram(editorState.graphics.shaderProgram);
-
-        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1));
-        auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(200 + width/2, 32 + height/2, 0.9)) * rotationMatrix * scaleMatrix;
-        //setFrontCulling(false);
-        uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
-    }
-
-    // End 3d scene
 }
 
 
@@ -597,12 +552,36 @@ void render3DScenePanel(int originX, int originY, int width, int height, EditorS
 
 }
 
+void blitFramebufferToScreen(GraphicsHandle framebuffer, EditorState& editorState, int width, int height, int originX, int originY, float depth) {
+    // Blit quad to default framebuffer:
+    enableBlending(false);
+    bindDefaultBackbuffer(0, 0, editorState.screen_width, editorState.screen_height);
+    bindVertexArray(editorState.graphics.quadVertexArray);
+    bindShaderProgram(editorState.graphics.shaderProgram);
+    bindFrameBufferTexture(framebuffer, 0);
+    uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
+    auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1));
+    auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(originX, originY, depth)) * rotationMatrix * scaleMatrix;
+    uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+    renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+}
+
+void renderAnimationPanel(int originX, int originY, int width, int height, EditorState & editorState) {
+    setFrontCulling(true);
+    bindVertexArray(editorState.graphics.quadVertexArray);
+    bindShaderProgram(editorState.graphics.shaderProgram);
+    bindFrameBuffer(editorState.graphics.frameBufferGameObjectTree, 0, 0, width, height);
+    clearFrameBuffer(editorState.graphics.frameBufferGameObjectTree, .1, .1, 0.1, 1);
+
+}
+
 void renderAssetPanel(int originX, int originY, int width, int height, EditorState & editorState) {
         setFrontCulling(true);
         bindVertexArray(editorState.graphics.quadVertexArray);
         bindShaderProgram(editorState.graphics.shaderProgram);
-        bindFrameBuffer(editorState.graphics.frameBufferSceneTree, 0, 0, width, height);
-        clearFrameBuffer(editorState.graphics.frameBufferSceneTree, .1, .1, 0.1, 1);
+        bindFrameBuffer(editorState.graphics.frameBufferAssetPanel, 0, 0, width, height);
+        clearFrameBuffer(editorState.graphics.frameBufferAssetPanel, .1, .1, 0.1, 1);
 
         Camera sceneTreeCamera;
         sceneTreeCamera.view_matrix = glm::mat4(1);
@@ -685,19 +664,8 @@ void renderAssetPanel(int originX, int originY, int width, int height, EditorSta
         }
 
 
+        blitFramebufferToScreen(editorState.graphics.frameBufferAssetPanel, editorState, width, height, originX, originY, 2);
 
-        // Blit fb quad to the screen:
-        enableBlending(false);
-        bindDefaultBackbuffer(0, 0, editorState.screen_width, editorState.screen_height);
-        bindVertexArray(editorState.graphics.quadVertexArray);
-        bindShaderProgram(editorState.graphics.shaderProgram);
-        bindFrameBufferTexture(editorState.graphics.frameBufferSceneTree, 0);
-        uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
-        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1));
-        auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(originX, originY, 2)) * rotationMatrix * scaleMatrix;
-        uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
 }
 
 void renderStatusBar(int originX, int originY, int width, int height, EditorState & editorState) {
@@ -754,20 +722,21 @@ void renderStatusBar(int originX, int originY, int width, int height, EditorStat
 
 
         // Draw to default backbuffer
-        {
-            enableBlending(false);
-            bindDefaultBackbuffer(0, 0, editorState.screen_width, editorState.screen_height);
-            bindVertexArray(editorState.graphics.quadVertexArray);
-            bindShaderProgram(editorState.graphics.shaderProgram);
-            bindFrameBufferTexture(editorState.graphics.frameBufferTopMenu, 0);
-            uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
-            auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1));
-            auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(originX, originY, 0.9)) * scaleMatrix;
-            //setFrontCulling(false);
-            uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-            renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
-
-        }
+        blitFramebufferToScreen(editorState.graphics.frameBufferTopMenu, editorState, width, height, originX, originY, 0.9);
+        // {
+        //     enableBlending(false);
+        //     bindDefaultBackbuffer(0, 0, editorState.screen_width, editorState.screen_height);
+        //     bindVertexArray(editorState.graphics.quadVertexArray);
+        //     bindShaderProgram(editorState.graphics.shaderProgram);
+        //     bindFrameBufferTexture(editorState.graphics.frameBufferTopMenu, 0);
+        //     uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
+        //     auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1));
+        //     auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(originX, originY, 0.9)) * scaleMatrix;
+        //     //setFrontCulling(false);
+        //     uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        //     renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+        //
+        // }
 }
 
 void renderMainTabPanel(int originX, int originY, int width, int height, EditorState & editorState) {
@@ -1014,6 +983,7 @@ void check_menu_inputs(EditorState & editorState) {
             editorState.meshPool.clear();
             std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
             std::string fileNameNonWide = converter.to_bytes(fileName);
+            if (fileNameNonWide.empty()) return;
             auto importedMeshDataItems = importMeshFromFile(fileNameNonWide);
             auto thumbnailTexture = createThumbnailForMesh(importedMeshDataItems, editorState.graphics.shaderProgram3D, editorState.graphics.objectTransformBuffer, editorState.graphics.cameraTransformBuffer, editorState.vertexAttributes, 128, 128);
             auto meshGroup = new MeshGroup();
@@ -1375,8 +1345,9 @@ void initEditor(EditorState& editorState) {
     editorState.graphics.frameBufferMainTabPanel = createFrameBuffer(editorState.screen_width - 200 * 2, 32 , true);
     editorState.graphics.frameBufferTopMenu = createFrameBuffer(editorState.screen_width, 32, true);
     editorState.graphics.frameBufferStatusBar = createFrameBuffer(editorState.screen_width, 32, true);
-    editorState.graphics.frameBufferSceneTree = createFrameBuffer(200, editorState.screen_height-64, true);
+    editorState.graphics.frameBufferGameObjectTree = createFrameBuffer(200, editorState.screen_height-64, true);
     editorState.graphics.frameBufferAssetPanel = createFrameBuffer(200, editorState.screen_height-64, true);
+    editorState.graphics.frameBufferAnimationPanel = createFrameBuffer(editorState.screen_width - 200 * 2, 200, true);
 
     // Create constant buffers:
     editorState.graphics.skinningMatricesCBuffer = createConstantBuffer(sizeof(glm::mat4) * 50);  // TODO have one per skeleton and adjust to the number of actual joints

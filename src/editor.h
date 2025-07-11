@@ -75,9 +75,10 @@ struct EditorState {
         GraphicsHandle frameBufferMainTabPanel;
         GraphicsHandle frameBufferTopMenu;
         GraphicsHandle frameBufferAssetPanel;
-        GraphicsHandle frameBufferSceneTree;
+        GraphicsHandle frameBufferGameObjectTree;
         GraphicsHandle frameBufferStatusBar;
         GraphicsHandle frameBufferThumbnail;
+        GraphicsHandle frameBufferAnimationPanel;
         GraphicsHandle shaderProgram3D;
 
         GraphicsHandle jointDebugTexture;

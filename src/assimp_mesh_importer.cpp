@@ -59,6 +59,9 @@ bool isAnimatedJoint(const std::string& name, const aiScene* scene) {
 
 
 std::vector<MeshData*> importMeshFromFile(const std::string &fileName) {
+    if (fileName.empty()) {
+        return {};
+    }
     Assimp::Importer importer;
     auto scene = importer.ReadFile(fileName, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_FlipUVs | aiProcess_LimitBoneWeights | aiProcess_CalcTangentSpace);
     assert(scene != nullptr);
