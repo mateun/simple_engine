@@ -135,7 +135,7 @@ void renderTopMenu(int originX, int originY, int width, int height, EditorState&
 
         int hOffset = 8 + accumulatedTextLength;
         auto textMesh = menuItem->textMesh;
-        auto textBB = measureText(editorState.graphics.fontHandle, menuItem->name);
+        auto textBB = measureText(editorState.graphics.fontHandleBig, menuItem->name);
         auto itemWidth = textBB.right - textBB.left;
         accumulatedTextLength += itemWidth + 24;
 
@@ -154,7 +154,7 @@ void renderTopMenu(int originX, int originY, int width, int height, EditorState&
         enableBlending(true);
         bindShaderProgram(editorState.graphics.textShaderProgram);
         bindVertexArray(textMesh->meshVertexArray);
-        bindTexture(getTextureFromFont(editorState.graphics.fontHandle), 0);
+        bindTexture(getTextureFromFont(editorState.graphics.fontHandleBig), 0);
         auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
         auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset, 20, 1)) *  scaleMatrix;
         menuItem->renderBoundingBox = {(float)hOffset-4, 0, (float)hOffset-4 + itemWidth + 16, 32};
@@ -1271,6 +1271,23 @@ void check_resizing(EditorState& editorState) {
     }
 }
 
+// We currently have two horizontal splitters:
+// gameObjectTree <-> Main Tab viewport
+// Main Tab viewport <-> Asset Browser
+void renderSplitters(EditorState & editorState) {
+
+    enableBlending(false);
+    bindDefaultBackbuffer(0, 0, editorState.screen_width, editorState.screen_height);
+    bindVertexArray(editorState.graphics.quadVertexArray);
+    bindShaderProgram(editorState.graphics.shaderProgram);
+    bindTexture(editorState.texturePool["gray_bg"], 0);
+    uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.orthoCamera->matrixBufferPtr(), sizeof(Camera), 1);
+    auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(4, editorState.screen_height - 64, 1));
+    auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(200-2, 32  + (editorState.screen_height - 64)/2.0f, 0.5)) * scaleMatrix;
+    uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+    renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+}
+
 void do_frame(const Win32Window & window, EditorState& editorState) {
 
     update_camera(editorState);
@@ -1284,6 +1301,7 @@ void do_frame(const Win32Window & window, EditorState& editorState) {
     clear(0, 0.0, 0, 1);
 
     renderPanels(editorState);
+    renderSplitters(editorState);
 
     present();
 }
@@ -1752,12 +1770,13 @@ void initEditor(EditorState& editorState) {
     editorState.vertexAttributes = editorState.graphics.posUVVertexAttributes;
 
     // Prepare text render meshes:
-    editorState.graphics.fontHandle = createFont("assets/consola.ttf", 16);
+    editorState.graphics.fontHandle = createFont("assets/Inter_18pt-Light.ttf", 16);
+    editorState.graphics.fontHandleBig = createFont("assets/Inter_18pt-Light.ttf", 18);
     editorState.textMesh = createTextMesh(editorState.graphics.fontHandle, "Long placeholder text so updates will fit in nicely");
-    editorState.menuTextMeshes.tmFile = createTextMesh(editorState.graphics.fontHandle, "File");
-    editorState.menuTextMeshes.tmGameObjects = createTextMesh(editorState.graphics.fontHandle, "GameObjects");
-    editorState.menuTextMeshes.tmSettings = createTextMesh(editorState.graphics.fontHandle, "Settings");
-    editorState.menuTextMeshes.tmModelImport = createTextMesh(editorState.graphics.fontHandle, "Import");
+    editorState.menuTextMeshes.tmFile = createTextMesh(editorState.graphics.fontHandleBig, "File");
+    editorState.menuTextMeshes.tmGameObjects = createTextMesh(editorState.graphics.fontHandleBig, "GameObjects");
+    editorState.menuTextMeshes.tmSettings = createTextMesh(editorState.graphics.fontHandleBig, "Settings");
+    editorState.menuTextMeshes.tmModelImport = createTextMesh(editorState.graphics.fontHandleBig, "Import");
     editorState.topMenuItems.push_back(new MenuItem{"File",  editorState.menuTextMeshes.tmFile });
     editorState.topMenuItems.push_back(new MenuItem{"Import", editorState.menuTextMeshes.tmModelImport, {}, importModelAction});
     editorState.topMenuItems.push_back(new MenuItem{"GameObjects", editorState.menuTextMeshes.tmGameObjects});
@@ -1877,6 +1896,8 @@ void initEditor(EditorState& editorState) {
     currentLevelTab->tabHeader.titleTextMesh = createTextMesh(editorState.graphics.fontHandle, "Level1");
     currentLevelTab->level = editorState.project->levels[0];
     editorState.mainTabs.push_back(currentLevelTab);
+
+    editorState.currentMainTabTitle = "Level1";
 
 }
 

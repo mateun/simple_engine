@@ -97,6 +97,7 @@ struct EditorState {
         GraphicsHandle objectTransformBuffer;
         GraphicsHandle skinningMatricesCBuffer;
         GraphicsHandle fontHandle;
+        GraphicsHandle fontHandleBig;
         GraphicsHandle frameBuffer3DPanel;
         GraphicsHandle frameBufferMainTabPanel;
         GraphicsHandle frameBufferTopMenu;
