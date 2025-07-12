@@ -175,184 +175,168 @@ void createDefaultDepthStencilBuffer(int width, int height) {
     ctx->OMSetDepthStencilState(m_DepthStencilState, 0);
 }
 
+void PrintDXGIError(HRESULT hr) {
+    LPWSTR errorText = nullptr;
+    DWORD result = FormatMessageW(
+        FORMAT_MESSAGE_FROM_SYSTEM |FORMAT_MESSAGE_ALLOCATE_BUFFER, nullptr, hr,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        reinterpret_cast<LPWSTR>(&errorText), 0, nullptr );
+    if (result > 0)
+    {
+        // errorText contains the description of the error code hr
+        std::wcout << "DXGI Error: " << errorText << std::endl;
+        LocalFree( errorText );
+    }
+    else
+    {
+        // Error not known by the OS
+    }
+}
+
 void createSwapChain(HWND hwnd, int width, int height) {
-
-    // These are descriptions needed for a new swapchain1 specified SC:
-    DXGI_SWAP_CHAIN_DESC1 scdesc1 = {};
-    scdesc1.Width = width;
-    scdesc1.Height = height;
-    scdesc1.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    scdesc1.Stereo = FALSE;
-    scdesc1.SampleDesc.Count = 1;
-    scdesc1.SampleDesc.Quality = 0;
-    scdesc1.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    scdesc1.BufferCount = 2;
-    scdesc1.Scaling = DXGI_SCALING_NONE;
-    scdesc1.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-    scdesc1.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
-    scdesc1.Flags = 0;
-    DXGI_SWAP_CHAIN_FULLSCREEN_DESC fsdesc = {};
-    fsdesc.Windowed = TRUE;
-    // fsdesc.RefreshRate.Numerator = 60;
-    // fsdesc.RefreshRate.Denominator = 1;
-    fsdesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
-    fsdesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
-
     IDXGIDevice * pDXGIDevice = nullptr;
     auto result = device->QueryInterface(__uuidof(IDXGIDevice), (void **)&pDXGIDevice);
 
     IDXGIAdapter * pDXGIAdapter = nullptr;
     result = pDXGIDevice->GetAdapter(&pDXGIAdapter);
-    //
+
+
+    IDXGIOutput* pOutput = nullptr;
+    result = pDXGIAdapter->EnumOutputs(0, &pOutput);
+    if (SUCCEEDED(result)) {
+        UINT numModes = 0;
+        // First, get the number of modes
+        result = pOutput->GetDisplayModeList(DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, 0, &numModes, nullptr);
+        if (SUCCEEDED(result) && numModes > 0) {
+            std::vector<DXGI_MODE_DESC> modeList(numModes);
+            // Retrieve the full list
+            result = pOutput->GetDisplayModeList(DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, 0, &numModes, modeList.data());
+            if (SUCCEEDED(result)) {
+                std::cout << "Supported _SRGB modes found: " << numModes << std::endl;
+                bool modeFound = false;
+                for (const auto& mode : modeList) {
+
+                    // Check for exact or close match
+                    if (mode.Width == width && mode.Height == height &&
+                        mode.Format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB &&
+                        mode.RefreshRate.Numerator / (float)mode.RefreshRate.Denominator >= 59.0f &&
+                        mode.RefreshRate.Numerator / (float)mode.RefreshRate.Denominator <= 61.0f) {
+                        modeFound = true;
+                        std::cout << "Matching mode found!" << std::endl;
+                        std::cout << "Width: " << mode.Width << ", Height: " << mode.Height
+                              << ", Refresh: " << mode.RefreshRate.Numerator << "/"
+                              << mode.RefreshRate.Denominator << std::endl;
+                        // Update fsdesc with this mode if needed
+                        //sd.RefreshRate = mode.RefreshRate;
+                        break;
+                        }
+                }
+                if (!modeFound) {
+                    std::cout << "No exact match for " << width << "x" << height << " at ~60 Hz" << std::endl;
+                }
+            } else {
+                std::cout << "GetDisplayModeList failed: 0x" << std::hex << result << std::endl;
+            }
+        } else {
+            std::cout << "Format not supported or no modes: 0x" << std::hex << result << std::endl;
+        }
+        pOutput->Release();
+    }
+
+
     IDXGIFactory2* pFactory2 = nullptr;
     auto hr= pDXGIAdapter->GetParent(__uuidof(IDXGIFactory2), (void**)&pFactory2);
     if (FAILED(hr)) {
         exit(1);
     }
 
-     IDXGIFactory* pFactory = nullptr;
-     hr= pDXGIAdapter->GetParent(__uuidof(IDXGIFactory), (void**)&pFactory);
-     if (FAILED(hr)) {
-         exit(1);
-     }
-
-
-
-
-     // // Dxfactory1 creation code:
-     // DXGI_SWAP_CHAIN_DESC sd;
-     // sd.BufferDesc.Width  = width;
-     // sd.BufferDesc.Height = height;
-     // sd.BufferDesc.RefreshRate.Numerator = 60;
-     // sd.BufferDesc.RefreshRate.Denominator = 1;
-     // sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-     // sd.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
-     // sd.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
-     // sd.SampleDesc.Count   = 1;
-     // sd.SampleDesc.Quality = 0;
-     // sd.BufferUsage  = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-     // sd.BufferCount  = 1;
-     // sd.OutputWindow = hwnd;
-     // sd.Windowed     = true;
-     // sd.SwapEffect   = DXGI_SWAP_EFFECT_DISCARD;
-     // sd.Flags        = 0;
-    // result = pFactory->CreateSwapChain(device, &sd, &swapChain );
-
-    result = pFactory2->CreateSwapChainForHwnd(device, hwnd, &scdesc1, &fsdesc, nullptr, &swapChain1);
+    IDXGIFactory* pFactory = nullptr;
+    result = pDXGIAdapter->GetParent(__uuidof(IDXGIFactory), (void**)&pFactory);
     if (FAILED(result)) {
-        std::cout << "error creating swapchain 0x%08X" << std::to_string(result) << std::endl;
         exit(1);
     }
 
-    // Set sRGB color space
-    IDXGISwapChain3* swapChain3;
-    result = swapChain1->QueryInterface(IID_PPV_ARGS(&swapChain3));
-    if (SUCCEEDED(result)) {
-        result = swapChain3->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709); // sRGB
+    // Dxfactory1 creation code:
+    {
+        DXGI_SWAP_CHAIN_DESC sd;
+        sd.BufferDesc.Width  = width;
+        sd.BufferDesc.Height = height;
+        sd.BufferDesc.RefreshRate.Numerator = 60;
+        sd.BufferDesc.RefreshRate.Denominator = 1;
+        sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+        sd.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+        sd.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+        sd.SampleDesc.Count   = 1;
+        sd.SampleDesc.Quality = 0;
+        sd.BufferUsage  = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        sd.BufferCount  = 1;
+        sd.OutputWindow = hwnd;
+        sd.Windowed     = true;
+        sd.SwapEffect   = DXGI_SWAP_EFFECT_DISCARD;
+        sd.Flags        = 0;
+        result = pFactory->CreateSwapChain(device, &sd, &swapChain );
         if (FAILED(result)) {
-            std::cout << "Failed to set color space: 0x" << std::hex << result << std::endl;
+            PrintDXGIError(result);
+            exit(2);
         }
     }
 
+    std::cout << "hwnd: " << hwnd << std::endl;
+    if (!IsWindow(hwnd) || !IsWindowVisible(hwnd)) {
+        std::cout << "Invalid or hidden window" << std::endl;
+        exit(1);
+    }
 
-    pFactory2->Release();
-    //pFactory->Release();
+#ifdef USE_FLIP_DISCARD_EFFECT
+    {
+        // These are descriptions needed for a new swapchain1 specified SC:
+        DXGI_SWAP_CHAIN_DESC1 scdesc1 = {};
+        scdesc1.Width = width;
+        scdesc1.Height = height;
+        scdesc1.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        scdesc1.Stereo = FALSE;
+        scdesc1.SampleDesc.Count = 1;
+        scdesc1.SampleDesc.Quality = 0;
+        scdesc1.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        scdesc1.BufferCount = 2;
+        scdesc1.Scaling = DXGI_SCALING_NONE;
+        scdesc1.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+        scdesc1.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
+        scdesc1.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+        DXGI_SWAP_CHAIN_FULLSCREEN_DESC fsdesc = {};
+        fsdesc.Windowed = TRUE;
+        fsdesc.RefreshRate.Numerator = 60;
+        fsdesc.RefreshRate.Denominator = 1;
+        fsdesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+        fsdesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+
+        result = pFactory2->CreateSwapChainForHwnd(device, hwnd, &scdesc1, &fsdesc, nullptr, &swapChain1);
+        if (FAILED(result)) {
+            std::cout << "error creating swapchain 0x" << std::hex << result << std::endl;
+            PrintDXGIError(result);
+            exit(1);
+        }
+
+        // Set sRGB color space
+        IDXGISwapChain3* swapChain3;
+        result = swapChain1->QueryInterface(IID_PPV_ARGS(&swapChain3));
+        if (SUCCEEDED(result)) {
+            result = swapChain3->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709); // sRGB
+            if (FAILED(result)) {
+                std::cout << "Failed to set color space: 0x" << std::hex << result << std::endl;
+            }
+        }
+        pFactory2->Release();
+    }
+#endif
+
+
+    pFactory->Release();
     pDXGIAdapter->Release();
     pDXGIDevice->Release();
 
     resizeSwapChain(hwnd, width, height);
-    return;
 
-    // Create a backbuffer
-    result = swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
-    if (FAILED(result)) {
-        OutputDebugString(L"backbuffer creation failed\n");
-        exit(1);
-    }
-
-    // Bind the backbuffer as our render target
-    D3D11_RENDER_TARGET_VIEW_DESC rtvDesc = {};
-    rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-    rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-    rtvDesc.Texture2D.MipSlice = 0;
-
-    result = device->CreateRenderTargetView(backBuffer, &rtvDesc, &rtv);
-    if (FAILED(result)) {
-        OutputDebugString(L"rtv creation failed\n");
-        exit(1);
-    }
-
-    createDefaultDepthStencilBuffer(width, height);
-
-    // // --------------------------------------------------
-    // // Create a depth/stencil buffer
-    // D3D11_TEXTURE2D_DESC td;
-    // td.Width = width;
-    // td.Height = height;
-    // td.MipLevels = 1;
-    // td.ArraySize = 1;
-    // td.Format = DXGI_FORMAT_D32_FLOAT;
-    // td.SampleDesc.Count = 1;
-    // td.SampleDesc.Quality = 0;
-    // td.Usage = D3D11_USAGE_DEFAULT;
-    // td.BindFlags = D3D11_BIND_DEPTH_STENCIL;
-    // td.CPUAccessFlags = 0;
-    // td.MiscFlags = 0;
-    //
-    // result = device->CreateTexture2D(&td, 0, &depthStencilBuffer);
-    // if (FAILED(result)) {
-    //     OutputDebugString(L"D S buffer creation failed\n");
-    //     exit(1);
-    // }
-    //
-    // D3D11_DEPTH_STENCIL_VIEW_DESC dpd;
-    // ZeroMemory(&dpd, sizeof(dpd));
-    // dpd.Flags = 0;
-    // dpd.Format = DXGI_FORMAT_D32_FLOAT;
-    // dpd.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-    //
-    // result = device->CreateDepthStencilView(depthStencilBuffer, &dpd, &depthStencilView);
-    // if (FAILED(result)) {
-    //     OutputDebugString(L"D S view creation failed\n");
-    //     exit(1);
-    // }
-    //
-    // D3D11_DEPTH_STENCIL_DESC depthStencilDesc;
-    // depthStencilDesc.DepthEnable = TRUE;
-    // depthStencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-    // depthStencilDesc.DepthFunc = D3D11_COMPARISON_LESS;
-    // depthStencilDesc.StencilEnable = FALSE;
-    // depthStencilDesc.StencilReadMask = 0xFF;
-    // depthStencilDesc.StencilWriteMask = 0xFF;
-    //
-    // // Stencil operations if pixel is front-facing
-    // depthStencilDesc.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
-    // depthStencilDesc.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_INCR;
-    // depthStencilDesc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
-    // depthStencilDesc.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
-    //
-    // // Stencil operations if pixel is back-facing
-    // depthStencilDesc.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
-    // depthStencilDesc.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_DECR;
-    // depthStencilDesc.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
-    // depthStencilDesc.BackFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
-    //
-    // result = device->CreateDepthStencilState(&depthStencilDesc, &m_DepthStencilState);
-    // if (FAILED(result)) {
-    //     OutputDebugString(L"failed to create depth stencil state\n");
-    //     exit(1);
-    // }
-    //
-    // depthStencilDesc.DepthEnable = FALSE;
-    // depthStencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-    // depthStencilDesc.DepthFunc = D3D11_COMPARISON_LESS;
-    // result = device->CreateDepthStencilState(&depthStencilDesc, &m_depthStencilStateNoDepth);
-    // if (FAILED(result)) {
-    //     OutputDebugString(L"failed to create depth stencil state\n");
-    //     exit(1);
-    // }
-    //
-    // ctx->OMSetDepthStencilState(m_DepthStencilState, 0);
 }
 
 
@@ -361,7 +345,11 @@ void initGraphics(Win32Window& window, bool msaa, int msaa_samples) {
     int h = window.getHeight();
     //GetWindowClientSize(hwnd, w, h);
     D3D_FEATURE_LEVEL featureLevels =  D3D_FEATURE_LEVEL_11_1;
-    HRESULT result = D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_DEBUG, &featureLevels, 1, D3D11_SDK_VERSION,
+    UINT flags = 0;
+#ifdef _DEBUG_BUILD
+    flags = D3D11_CREATE_DEVICE_DEBUG;;
+#endif
+    HRESULT result = D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, flags, &featureLevels, 1, D3D11_SDK_VERSION,
                                        &device, NULL, &ctx);
     if (FAILED(result)) {
         std::cerr << "CreateDevice failed" << std::endl;
@@ -370,11 +358,14 @@ void initGraphics(Win32Window& window, bool msaa, int msaa_samples) {
 
     // Gather the debug interface
     debugger = 0;
-    result = device->QueryInterface(__uuidof(ID3D11Debug), (void**)&debugger);
-    if (FAILED(result)) {
-        OutputDebugString(L"debuger creation failed\n");
-        exit(1);
+    if (flags == D3D11_CREATE_DEVICE_DEBUG) {
+        result = device->QueryInterface(__uuidof(ID3D11Debug), (void**)&debugger);
+        if (FAILED(result)) {
+            OutputDebugString(L"debuger creation failed\n");
+            exit(1);
+        }
     }
+
 
 
     UINT ql;
@@ -458,7 +449,7 @@ void initGraphics(Win32Window& window, bool msaa, int msaa_samples) {
 #include <comdef.h>
 void present() {
     auto sc = swapChain ? swapChain : swapChain1;
-    auto hr = swapChain1->Present(0, 0);
+    auto hr = sc->Present(0, 0);
     if (FAILED(hr)) {
         _com_error err(hr);
         std::wcerr << L"Present failed: " << _com_error(hr).ErrorMessage() << std::endl;
@@ -647,8 +638,8 @@ void resizeSwapChain(HWND hwnd, int width, int height) {
         depthStencilBuffer = nullptr;
     }
 
-
-    auto hr = swapChain1->Present(0, 0);
+    auto sc = swapChain ? swapChain : swapChain1;
+    auto hr = sc->Present(0, 0);
     if (FAILED(hr)) {
         exit(2);
     }
@@ -657,7 +648,8 @@ void resizeSwapChain(HWND hwnd, int width, int height) {
     // height = 720;
 
     DXGI_SWAP_CHAIN_DESC desc;
-    swapChain1->GetDesc(&desc);
+
+    sc->GetDesc(&desc);
     std::cout << "Swap chain state: BufferCount=" << desc.BufferCount
               << ", Format=" << desc.BufferDesc.Format
               << ", Windowed=" << (desc.Windowed ? "Yes" : "No")
@@ -669,19 +661,19 @@ void resizeSwapChain(HWND hwnd, int width, int height) {
     modeDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     modeDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
     modeDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
-    auto result = swapChain1->ResizeTarget(&modeDesc);
+    auto result = sc->ResizeTarget(&modeDesc);
     if (FAILED(result)) {
         std::cout << "backbuffer target resizing failed" << std::to_string(result) << std::endl;
         exit(1);
     }
 
-    result = swapChain1->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
+    result = sc->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
     if (FAILED(result)) {
         std::cout << "backbuffer resizing on swapchain resizing failed" << std::to_string(result) << std::endl;
         exit(1);
     }
 
-    result = swapChain1->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
+    result = sc->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
     if (FAILED(result)) {
         std::cout << "backbuffer creation/retrieval on swapchain resizing failed" << std::endl;
         exit(1);
