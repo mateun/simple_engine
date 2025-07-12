@@ -168,13 +168,18 @@ struct TabHeader {
 
 enum class TabType {
     Model,
+    Level,
     Texture,
     Script
 };
 
+struct Level;
 struct Tab {
     TabHeader tabHeader;
     TabType type;
+
+    // For levels:
+    Level* level;
 
     // For models
     MeshGroup* meshGroup = nullptr;

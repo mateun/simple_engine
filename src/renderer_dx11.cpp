@@ -843,6 +843,7 @@ void bindVertexBuffer(int bufferHandle) {
 
 D3D11_PRIMITIVE_TOPOLOGY getPrimitiveTopology(PrimitiveType primitiveType) {
     switch (primitiveType) {
+        case PrimitiveType::LINE_LIST: return D3D11_PRIMITIVE_TOPOLOGY_LINELIST;
         case PrimitiveType::TRIANGLE_LIST: return D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
         default: return D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
     }

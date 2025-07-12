@@ -10,6 +10,7 @@
 #include <glm/glm.hpp>
 
 
+
 struct GameObject {
 
     struct TransformData {
@@ -30,6 +31,7 @@ struct GameObject {
     } renderData;
 
     GraphicsHandle diffuseTexture = {-1};
+    GraphicsHandle shaderProgram = { -1};
 
     std::vector<GameObject*> children;
     std::string name;
@@ -37,7 +39,20 @@ struct GameObject {
     BoundingBox treeBoundingBox;
 
     bool expandedInTree = false;
+
 };
+
+struct Level {
+    std::string name;
+    std::vector<GameObject*> gameObjects;
+
+};
+
+struct Project {
+    std::string name;
+    std::vector<Level*> levels;
+};
+
 
 struct alignas(16) ObjectTransformBuffer {
     glm::mat4 world_matrix;
@@ -50,7 +65,7 @@ struct alignas(16) ObjectTransformBuffer {
 struct EditorState {
 
     Win32Window* window;
-    std::map<std::string, MeshGroup*> meshPool;
+    std::map<std::string, MeshGroup*> meshGroupPool;
     std::map<std::string, GraphicsHandle> texturePool;
 
     struct MenuTextMeshes {
@@ -67,6 +82,16 @@ struct EditorState {
         GraphicsHandle quadVertexBuffer;
         GraphicsHandle quadIndexBuffer;
         GraphicsHandle quadVertexArray;
+
+        GraphicsHandle meshEditorGridVertexArray;
+        GraphicsHandle meshEditorGridVertexBuffer;
+        GraphicsHandle meshEditorGridIndexBuffer;
+
+        GraphicsHandle levelEditorGridVertexArray;
+        GraphicsHandle levelEditorGridVertexBuffer;
+        GraphicsHandle levelEditorGridIndexBuffer;
+
+
         GraphicsHandle textureHandle;
         GraphicsHandle cameraTransformBuffer;
         GraphicsHandle objectTransformBuffer;
@@ -80,10 +105,16 @@ struct EditorState {
         GraphicsHandle frameBufferStatusBar;
         GraphicsHandle frameBufferThumbnail;
         GraphicsHandle frameBufferAnimationPanel;
+        GraphicsHandle frameBufferLevelEditorPanel;
         GraphicsHandle shaderProgram3D;
+        GraphicsHandle lineShaderProgram;
 
         GraphicsHandle jointDebugTexture;
         Mesh* jointDebugMesh = nullptr;
+
+        std::vector<VertexAttributeDescription> posUVVertexAttributes;
+        std::vector<VertexAttributeDescription> positionOnlyVertexAttributes;
+        std::vector<VertexAttributeDescription> animatedVertexAttributes;
 
     } graphics;
 
@@ -120,6 +151,12 @@ struct EditorState {
     GameObject* currentHoverExpandItem;
     GameObject* currentSelectedGameObjectTreeItem = nullptr;
     MenuItem* currentHoverMenuItem = nullptr;
+    int meshEditorGridLines = 23;
+    int levelEditorGridLines = 200;
+
+    Project* project = nullptr;
+
+
 };
 
 #endif //GAME_H

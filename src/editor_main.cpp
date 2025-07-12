@@ -20,6 +20,7 @@
 
 static float frame_time = 0.0f;
 
+void renderLevelEditor(int originX, int originY, int width, int height, EditorState & editorState, Level* meshGroup);
 void renderAnimationPanel(int originX, int originY, int width, int height, EditorState & editorState, Mesh* mesh);
 void render3DScenePanel(int originX, int originY, int width, int height, EditorState & editorState);
 void blitFramebufferToScreen(GraphicsHandle framebuffer, EditorState& editorState, int width, int height, int originX, int originY, float depth);
@@ -66,9 +67,10 @@ void update_camera(EditorState& gameState) {
     // This allows moving fwd/bwd in the current plane.
     // So even if you look down pitched, you would still move level.
     float panFwd = 0;
-    if (isKeyDown('E')
-        //|| getControllerAxis(ControllerAxis::RSTICK_X, 0) > 0.4
-        ) {
+    if (isKeyDown('E')) {
+        yaw = 1;
+    }
+    if (isKeyDown('Q')) {
         yaw = -1;
     }
 
@@ -79,19 +81,26 @@ void update_camera(EditorState& gameState) {
         dir = -1;
     }
     if (isKeyDown('A')) {
-        hdir = -1;
+        hdir = 1;
     }
     if (isKeyDown('D')) {
-        hdir = 1;
+        hdir = -1;
     }
 
     auto fwd = gameState.perspectiveCamera->getForward();
-    auto right = gameState.perspectiveCamera->getRight();
+
     auto up = gameState.perspectiveCamera->getUp();
 
-    auto locCandidate = gameState.perspectiveCamera->location + glm::vec3{camspeed * fwd.x, 0, camspeed * fwd.z} * dir;
+    glm::vec4 fwdAfterYaw = glm::rotate(glm::mat4(1), yaw * rotspeed * 0.1f, up) * glm::vec4(fwd, 0);
+
+    auto locCandidate = gameState.perspectiveCamera->location + glm::vec3{camspeed * fwdAfterYaw.x, 0, camspeed * fwdAfterYaw.z} * dir;
+
+    auto right = gameState.perspectiveCamera->getRight();
+    locCandidate += glm::vec3{camspeed * right.x * 0.33, 0, camspeed * right.z * 0.33} * hdir;
+
     // Do any checks if needed.
     gameState.perspectiveCamera->location = locCandidate;
+    gameState.perspectiveCamera->lookAtTarget = locCandidate + glm::normalize(glm::vec3{fwdAfterYaw.x, fwdAfterYaw.y, fwdAfterYaw.z});
     gameState.perspectiveCamera->updateAndGetViewMatrix();
 
 }
@@ -301,12 +310,28 @@ Tab* findTabByTitle(const std::vector<Tab *> & tabs, const std::string & title) 
     return nullptr;
 }
 
+void renderGrid(GraphicsHandle targetFrameBuffer, EditorState& editorState, int viewport_width, int viewport_height, int lineCount, GraphicsHandle gridVertexArray) {
+    setFrontCulling(false);
+
+    bindFrameBuffer(targetFrameBuffer, 0, 0, viewport_width, viewport_height);
+    uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.perspectiveCamera->matrixBufferPtr(), sizeof(glm::mat4) * 2, 1);
+
+    bindShaderProgram(editorState.graphics.lineShaderProgram);
+    bindVertexArray(gridVertexArray);
+    auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+    auto worldMatrix = glm::translate(glm::mat4(1.0f), {0, 0, 0}) * scaleMatrix;
+    uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+    renderGeometryIndexed(PrimitiveType::LINE_LIST, lineCount * 4, 0);
+
+}
+
 void renderMeshEditor(int originX, int originY, int width, int height, EditorState & editorState, MeshGroup* meshGroup) {
     setFrontCulling(false);
 
     bindFrameBuffer(editorState.graphics.frameBuffer3DPanel, 0, 0, width, height);
     clearFrameBuffer(editorState.graphics.frameBuffer3DPanel, .0, .0, 0.0, 1);
 
+    renderGrid(editorState.graphics.frameBuffer3DPanel, editorState, width, height, editorState.meshEditorGridLines, editorState.graphics.meshEditorGridVertexArray);
 
     // Animation timing
     static float animationTime = 0.0f;
@@ -314,9 +339,6 @@ void renderMeshEditor(int originX, int originY, int width, int height, EditorSta
 
     // Render each mesh of this group:
     for (auto mesh : meshGroup->meshes) {
-
-
-
 
         // Skeleton/joint posing:
         if (mesh->skeleton != nullptr) {
@@ -413,12 +435,178 @@ void renderMeshEditor(int originX, int originY, int width, int height, EditorSta
         roto += 0.0f * frame_time;
         auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(roto), glm::vec3(0.0f, 1.0f, 0.0f));
         auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
-        auto worldMatrix = glm::translate(glm::mat4(1.0f), {0, 0, 2}) * rotationMatrix * scaleMatrix;
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), {0, 0, 0}) * rotationMatrix * scaleMatrix;
         uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, mesh->index_count, 0);
     }
-
     blitFramebufferToScreen(editorState.graphics.frameBuffer3DPanel, editorState, width, height, 200+width/2, 32 + height/2, 0.9);
+
+}
+
+void renderGameObjectInLevelEditor(int originX, int originY, int width, int height, EditorState & editorState, GameObject* go) {
+    // Render each mesh of this game object:
+    if (go->renderData.meshGroup == nullptr) {
+        for (auto child_go : go->children) {
+            renderGameObjectInLevelEditor(originX, originY, width, height, editorState, child_go);
+        }
+        return;
+    }
+
+    for (auto mesh : go->renderData.meshGroup->meshes) {
+        bindVertexArray(mesh->meshVertexArray);
+        bindShaderProgram(editorState.graphics.shaderProgram3D);
+
+        if (go->shaderProgram.id != -1) {
+            bindShaderProgram(go->shaderProgram);
+        } else {
+            bindShaderProgram(editorState.graphics.shaderProgram3D);
+        }
+
+        // Texture: first we take one of the gameObject, if it is set.
+        // If not present, we take the one from the mesh.
+        // So, the gameObject can override the "bakedIn" original texture
+        // if needed.
+        // Otherwise, fall back to dummy texture for now.
+        if (go->diffuseTexture.id != -1) {
+            bindTexture(go->diffuseTexture, 0);
+        } else {
+            if (mesh->diffuseTexture.id != -1) {
+                bindTexture(mesh->diffuseTexture, 0);
+            } else {
+                bindTexture(editorState.texturePool["debug_texture"], 0);
+            }
+
+        }
+
+        // Skeleton/joint posing:
+#ifdef LEVEL_EDITOR_WITH_ANIMATION
+        if (mesh->skeleton != nullptr) {
+            if (mesh->skeleton->animations.size() > 0) {
+                // We need a different shader here, which knows our attributes for blend-weights, blend-indices and the
+                // matrix palette cbuffer.
+                bindShaderProgram(editorState.graphics.animatedShaderProgram);
+
+                // Run the first animation here
+                auto animation = mesh->skeleton->animations[0];
+                if (animationTime >= animation->duration) {
+                    std::cout << "Animation looping" << std::to_string(animationTime) << std::endl;
+                    animationTime = 0.0f;
+                }
+                for (auto joint : mesh->skeleton->joints) {
+                    auto translationKeys = getStartEndKeyFrameForTime(animationTime, animation, KeyFrameType::Translation, joint->name);
+                    auto rotationKeys = getStartEndKeyFrameForTime(animationTime, animation, KeyFrameType::Rotation, joint->name);
+                    auto scalingKeys = getStartEndKeyFrameForTime(animationTime, animation, KeyFrameType::Scale, joint->name);
+
+                    // Translation interpolation:
+                    float t0 = translationKeys.posKeys.first.mTime / animation->ticksPerSecond;;
+                    float t1 = translationKeys.posKeys.second.mTime / animation->ticksPerSecond;
+                    glm::vec3 p0 = aiToGLM(translationKeys.posKeys.first.mValue);
+                    glm::vec3 p1 = aiToGLM(translationKeys.posKeys.second.mValue);
+                    float t = ((float) animationTime - t0 ) / (float) (t1 - t0);
+                    glm::vec3 p = glm::mix(p0, p1, t);
+
+                    // Rotation interpolation
+                    t0 = rotationKeys.rotKeys.first.mTime / animation->ticksPerSecond;
+                    t1 = rotationKeys.rotKeys.second.mTime / animation->ticksPerSecond;
+                    glm::quat q0 = aiToGLM(rotationKeys.rotKeys.first.mValue);
+                    glm::quat q1 = aiToGLM(rotationKeys.rotKeys.second.mValue);
+                    t = ((float) animationTime - t0 ) / (float) (t1 - t0);
+                    // if (joint->name == "spine") {
+                    //     printf("time: %.2f | t0: %.2f, t1: %.2f, t: %.2f\n", animationTime, t0, t1, t);
+                    // }
+                    glm::quat q = glm::slerp(q0, q1, t);
+
+                    // Scaling interpolation
+                    t0 = scalingKeys.scaleKeys.first.mTime / animation->ticksPerSecond;
+                    t1 = scalingKeys.scaleKeys.second.mTime / animation->ticksPerSecond;
+                    glm::vec3 s0 = aiToGLM(scalingKeys.scaleKeys.first.mValue);
+                    glm::vec3 s1 = aiToGLM(scalingKeys.scaleKeys.second.mValue);
+                    t = ((float) animationTime - t0 ) / (float) (t1 - t0);
+                    glm::vec3 s = glm::mix(s0, s1, t);
+
+                    joint->poseLocalTransform = translate(glm::mat4(1.0f), p) * glm::toMat4(q) *
+                        glm::scale(glm::mat4(1.0f), s);
+
+                }
+
+                // Now calculate the global pose for each joint:
+                for (auto j  : mesh->skeleton->joints) {
+                    if (j->parent) {
+                        j->poseGlobalTransform = j->parent->poseGlobalTransform * j->poseLocalTransform;
+                    } else {
+                        j->poseGlobalTransform = j->poseLocalTransform; // only the root bone has no parent.
+                    }
+                    j->poseFinalTransform = j->poseGlobalTransform * j->inverseBindMatrix;
+
+                }
+
+                // build frame matrix palette.
+                // One transform per joint, we upload this to the gpu for skinning inside the vertex shader:
+                std::vector<glm::mat4> framePalette;
+                for (auto& j : mesh->skeleton->joints) {
+                    framePalette.push_back(j->poseFinalTransform);
+                }
+
+                // Upload to gpu:
+                uploadConstantBufferData( editorState.graphics.skinningMatricesCBuffer, framePalette.data(), sizeof(glm::mat4) * framePalette.size(), 2);
+
+
+            }
+        }
+#endif
+
+        static float roto = 0.0f;
+        roto += 0.0f * frame_time;
+        auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(roto), glm::vec3(0.0f, 0.0f, 1.0f));
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), go->transform.position) * rotationMatrix * scaleMatrix;
+        uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, mesh->index_count, 0);
+    }
+}
+
+void renderLevelEditor(int originX, int originY, int width, int height, EditorState & editorState, Level* level) {
+    setFrontCulling(false);
+
+    bindShaderProgram(editorState.graphics.shaderProgram3D);
+    bindFrameBuffer(editorState.graphics.frameBufferLevelEditorPanel, 0, 0, width, height);
+    clearFrameBuffer(editorState.graphics.frameBufferLevelEditorPanel, .0, .01, 0.0, 1);
+    uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.perspectiveCamera->matrixBufferPtr(), sizeof(glm::mat4) * 2, 1);
+
+    renderGrid(editorState.graphics.frameBufferLevelEditorPanel, editorState, width, height, editorState.meshEditorGridLines, editorState.graphics.levelEditorGridVertexArray);
+
+    bindShaderProgram(editorState.graphics.lineShaderProgram);
+    // Render the post at the origin
+    {
+        auto postMeshGroup = editorState.meshGroupPool["origin_post.glb"];
+        if (postMeshGroup == nullptr) {
+            return;
+        }
+        for (auto mesh : postMeshGroup->meshes) {
+            bindVertexArray(mesh->meshVertexArray);
+
+            if (mesh->diffuseTexture.id != -1) {
+                bindTexture(mesh->diffuseTexture, 0);
+            } else {
+                bindTexture(editorState.texturePool["debug_texture"], 0);
+            }
+                static float roto = 0.0f;
+                roto += 0.0f * frame_time;
+                auto rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(roto), glm::vec3(0.0f, 0.0f, 1.0f));
+                auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+                auto worldMatrix = glm::translate(glm::mat4(1.0f), {0,0,0}) * rotationMatrix * scaleMatrix;
+                uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+                renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, mesh->index_count, 0);
+            }
+    }
+
+
+    // Render each game object:
+    for (auto go : level->gameObjects) {
+        renderGameObjectInLevelEditor(originX, originY, width, height, editorState, go);
+    }
+
+    blitFramebufferToScreen(editorState.graphics.frameBufferLevelEditorPanel, editorState, width, height, 200+width/2, 32 + height/2, 0.9);
 
 }
 
@@ -428,6 +616,9 @@ void renderMainViewportBody(int originX, int originY, int width, int height, Edi
     if (currentTab) {
         if (currentTab->type == TabType::Model) {
             renderMeshEditor(originX, originY, width, height, editorState, currentTab->meshGroup);
+        }
+        else if (currentTab->type == TabType::Level) {
+            renderLevelEditor(originX, originY, width, height, editorState, currentTab->level);
         }
     }
 }
@@ -1064,7 +1255,7 @@ void check_resizing(EditorState& editorState) {
         editorState.orthoCamera->view_matrix = glm::mat4(1);
         editorState.orthoCamera->projection_matrix = (glm::orthoLH_ZO<float>(0, editorState.screen_width,  editorState.screen_height, 0.0f, 0.0, 50));
 
-        editorState.perspectiveCamera->location = {0, 2, -2};
+        editorState.perspectiveCamera->location = {0, 3, -6};
         editorState.perspectiveCamera->lookAtTarget = {0, 0, 3};
         editorState.perspectiveCamera->view_matrix =editorState.perspectiveCamera->updateAndGetViewMatrix();
         editorState.perspectiveCamera->projection_matrix = editorState.perspectiveCamera->updateAndGetPerspectiveProjectionMatrix(65,
@@ -1096,6 +1287,36 @@ void do_frame(const Win32Window & window, EditorState& editorState) {
 
     present();
 }
+
+static std::string vshader_line_hlsl = R"(
+    struct VOutput
+    {
+        float4 pos : SV_POSITION;
+    };
+
+    // Per object transformation (movement, rotation, scale)
+    cbuffer ObjectTransformBuffer : register(b0) {
+        row_major matrix world_matrix;
+    };
+
+    // PerFrame
+    cbuffer CameraBuffer : register(b1) {
+        row_major float4x4 view_matrix;
+        row_major float4x4 projection_matrix;
+
+    };
+
+    VOutput main(float4 pos : POSITION) {
+        VOutput output;
+
+        output.pos = mul(pos, world_matrix);
+        output.pos = mul(output.pos, view_matrix);
+        output.pos = mul(output.pos, projection_matrix);
+
+        return output;
+     }
+)";
+
 
 static std::string vshader_hlsl = R"(
     struct VOutput
@@ -1212,6 +1433,20 @@ static std::string fshader_3d_hlsl=  R"(
     }
 )";
 
+static std::string fshader_color_hlsl = R"(
+
+    struct VOutput
+     {
+     	float4 pos : SV_POSITION;
+     };
+
+
+    float4 main(VOutput pixelShaderInput) : SV_TARGET
+    {
+        return float4(1.0, 0.5, 0.0, 1.0);
+    }
+)";
+
 static std::string fshader_hlsl = R"(
 
     struct VOutput
@@ -1313,37 +1548,48 @@ void createTestDummyTabs(EditorState & editorState) {
     editorState.mainTabs.push_back(tab3);
 }
 
+void createTestProject(EditorState & editorState) {
+    editorState.project = new Project();
+    editorState.project->name = "TestProject1";
+
+    auto level1 = new Level();
+    level1->name = "Level1";
+    level1->gameObjects.push_back(editorState.rootGameObject);
+    editorState.project->levels.push_back(level1);
+
+}
+
 void createTestGameObjects(EditorState & editorState) {
     auto heroGo = new GameObject();
-    heroGo->transform.position = glm::vec3(1, 0, 0);
-    heroGo->renderData.meshGroup = editorState.meshPool["hero_mesh"];
+    heroGo->transform.position = glm::vec3(2, 0, 6);
+    heroGo->renderData.meshGroup = editorState.meshGroupPool["test.glb"];
     heroGo->name = "Hero";
     heroGo->expandedInTree = false;
     editorState.gameObjects.push_back(heroGo);
 
     auto enemy1Go = new GameObject();
     enemy1Go->transform.position = glm::vec3(2, 0, 5);
-    enemy1Go->renderData.meshGroup = editorState.meshPool["enemy_mesh"];
+    enemy1Go->renderData.meshGroup = editorState.meshGroupPool["enemy_mesh"];
     enemy1Go->name = "Enemy1";
     enemy1Go->expandedInTree = true;
     editorState.gameObjects.push_back(enemy1Go);
 
     auto enemy1DroneGo = new GameObject();
     enemy1DroneGo->transform.position = glm::vec3(-1, 0, 2);
-    enemy1DroneGo->renderData.meshGroup = editorState.meshPool["drone_mesh"];
+    enemy1DroneGo->renderData.meshGroup = editorState.meshGroupPool["drone_mesh"];
     enemy1DroneGo->name = "Enemy1Drone";
     enemy1Go->children.push_back(enemy1DroneGo);
     //enemy1DroneGo->expandedInTree = true;
 
     auto enemy1DroneDeviceGo = new GameObject();
     enemy1DroneDeviceGo->transform.position = glm::vec3(-1, 0, 2);
-    enemy1DroneDeviceGo->renderData.meshGroup = editorState.meshPool["drone_device_mesh"];
+    enemy1DroneDeviceGo->renderData.meshGroup = editorState.meshGroupPool["drone_device_mesh"];
     enemy1DroneDeviceGo->name = "DroneDevice";
     enemy1DroneGo->children.push_back(enemy1DroneDeviceGo);
 
     auto enemy2Go = new GameObject();
     enemy2Go->transform.position = glm::vec3(-1, 0, 2);
-    enemy2Go->renderData.meshGroup = editorState.meshPool["enemy_mesh"];
+    enemy2Go->renderData.meshGroup = editorState.meshGroupPool["enemy_mesh"];
     enemy2Go->name = "Enemy2";
     editorState.gameObjects.push_back(enemy2Go);
 
@@ -1352,13 +1598,11 @@ void createTestGameObjects(EditorState & editorState) {
     editorState.rootGameObject->children.push_back(enemy2Go);
 
 
-
-
 }
 
 void importModelAction(EditorState & editorState) {
     auto fileName = showFileDialog(L"All\0*.*\0fbx\0*.fbx\0gltf\0*.glb");
-    editorState.meshPool.clear();
+    //editorState.meshGroupPool.clear();
     std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
     std::string fileNameNonWide = converter.to_bytes(fileName);
     if (fileNameNonWide.empty()) return;
@@ -1376,11 +1620,75 @@ void importModelAction(EditorState & editorState) {
         } else {
             describeVertexAttributes(editorState.vertexAttributes, mesh->meshVertexBuffer, editorState.graphics.shaderProgram, mesh->meshVertexArray);
         }
-        editorState.meshPool[im->meshName] = meshGroup;
+        editorState.meshGroupPool[meshGroup->name] = meshGroup;
         meshGroup->meshes.push_back(mesh);
     }
     editorState.importedMeshGroups.push_back(meshGroup);
 
+}
+
+std::tuple<std::vector<float>, std::vector<uint32_t>> buildGridVertices(int numberOfLines) {
+
+    std::vector<float> grid_vertices;
+
+    float start = -(numberOfLines / 2.0f) + 0.5;
+    for (int nl = 0; nl < numberOfLines; ++nl) {
+
+        float offset = nl;
+
+        // Lines reaching into the scene
+        grid_vertices.push_back(start + offset);
+        grid_vertices.push_back(0.0f);
+        grid_vertices.push_back(-100.0f);
+
+        grid_vertices.push_back(start + offset);
+        grid_vertices.push_back(0.0f);
+        grid_vertices.push_back(100.0f);
+
+        // Lines perpendicular to us:
+        grid_vertices.push_back(-100);
+        grid_vertices.push_back(0.0f);
+        grid_vertices.push_back(start + offset);
+
+        grid_vertices.push_back(100);
+        grid_vertices.push_back(0.0f);
+        grid_vertices.push_back(start + offset);
+
+    }
+
+    std::vector<uint32_t> grid_indices;
+    for (int nl = 0; nl < numberOfLines * 4; nl += 4) {
+        grid_indices.push_back(nl);
+        grid_indices.push_back(nl+1);
+        grid_indices.push_back(nl+2);
+        grid_indices.push_back(nl+3);
+    }
+
+    return {grid_vertices, grid_indices};
+
+}
+
+void importModelByFileName(EditorState& editorState, const std::string& fileName) {
+    auto importedMeshData = importMeshFromFile(fileName);
+    auto thumbnailTexture = createThumbnailForMesh(importedMeshData, editorState.graphics.shaderProgram3D,
+        editorState.graphics.objectTransformBuffer, editorState.graphics.cameraTransformBuffer, editorState.vertexAttributes, 128, 128);
+    auto meshGroup = new MeshGroup();
+    meshGroup->name = fileNameFromPath(fileName);
+    editorState.meshGroupPool[meshGroup->name] = meshGroup;
+    for (auto im : importedMeshData) {
+        auto mesh = im->toMesh();
+        mesh->thumbnail = thumbnailTexture;
+        // Now we decide which attributes to link with:
+        // For skeletal meshes with animations we use the gpu vertex skinned version, otherwise the "default one":
+        if (mesh->skeleton != nullptr && mesh->skeleton->animations.size() > 0) {
+            describeVertexAttributes(editorState.graphics.animatedVertexAttributes, mesh->meshVertexBuffer, editorState.graphics.animatedShaderProgram, mesh->meshVertexArray);
+        } else {
+            describeVertexAttributes(editorState.graphics.posUVVertexAttributes, mesh->meshVertexBuffer, editorState.graphics.shaderProgram, mesh->meshVertexArray);
+        }
+
+        meshGroup->meshes.push_back(mesh);
+    }
+    editorState.importedMeshGroups.push_back(meshGroup);
 }
 
 void initEditor(EditorState& editorState) {
@@ -1392,6 +1700,7 @@ void initEditor(EditorState& editorState) {
     editorState.graphics.shaderProgram3D = createShaderProgram(vshader_hlsl, fshader_3d_hlsl);
     editorState.graphics.animatedShaderProgram = createShaderProgram(vshader_hlsl_animated, fshader_hlsl);
     editorState.graphics.textShaderProgram = createShaderProgram(vshader_hlsl, fs_text_hlsl);
+    editorState.graphics.lineShaderProgram = createShaderProgram(vshader_line_hlsl, fshader_color_hlsl);
 #endif
 
     std::vector<float> tri_vertices = {
@@ -1408,8 +1717,10 @@ void initEditor(EditorState& editorState) {
         1, 2, 3
     };
 
+
+
     // Our "current" default layout: pos|uv
-    std::vector<VertexAttributeDescription> vertexAttributes =  {
+    editorState.graphics.posUVVertexAttributes =  {
         {"POSITION", 0, 3, DataType::Float, sizeof(float) * 5,
             0 },
 
@@ -1417,7 +1728,14 @@ void initEditor(EditorState& editorState) {
             sizeof(float) * 3 }
     };
 
-    std::vector<VertexAttributeDescription> vertexAttributesAnimated =  {
+    // Simplified pos only layout, e.g. for lines (grid):
+    editorState.graphics.positionOnlyVertexAttributes =  {
+        {"POSITION", 0, 3, DataType::Float, sizeof(float) * 3,
+            0 },
+    };
+
+    // For animated meshes
+    editorState.graphics.animatedVertexAttributes =  {
                 {"POSITION", 0, 3, DataType::Float, sizeof(float) * 13,
                 0 },
 
@@ -1430,8 +1748,8 @@ void initEditor(EditorState& editorState) {
                     sizeof(float) * 9 },
     };
 
-    editorState.vertexAttributesAnimated = vertexAttributesAnimated;
-    editorState.vertexAttributes = vertexAttributes;
+    editorState.vertexAttributesAnimated = editorState.graphics.animatedVertexAttributes;
+    editorState.vertexAttributes = editorState.graphics.posUVVertexAttributes;
 
     // Prepare text render meshes:
     editorState.graphics.fontHandle = createFont("assets/consola.ttf", 16);
@@ -1453,6 +1771,7 @@ void initEditor(EditorState& editorState) {
     editorState.graphics.frameBufferGameObjectTree = createFrameBuffer(200, editorState.screen_height-64, true);
     editorState.graphics.frameBufferAssetPanel = createFrameBuffer(200, editorState.screen_height-64, true);
     editorState.graphics.frameBufferAnimationPanel = createFrameBuffer(editorState.screen_width - 200 * 2, 200, true);
+    editorState.graphics.frameBufferLevelEditorPanel = createFrameBuffer(editorState.screen_width - 200 * 2, editorState.screen_height - 64, true);
 
     // Create constant buffers:
     editorState.graphics.skinningMatricesCBuffer = createConstantBuffer(sizeof(glm::mat4) * 50);  // TODO have one per skeleton and adjust to the number of actual joints
@@ -1460,25 +1779,10 @@ void initEditor(EditorState& editorState) {
     editorState.graphics.cameraTransformBuffer = createConstantBuffer(sizeof(glm::mat4) * 2);
 
     // Mesh import and vertex buffer creation etc.
-    // auto importedMeshData = importMeshFromFile("assets/test.glb");
-    // auto thumbnailTexture = createThumbnailForMesh(importedMeshData, editorState.graphics.shaderProgram3D,
-    //     editorState.graphics.objectTransformBuffer, editorState.graphics.cameraTransformBuffer, editorState.vertexAttributes, 128, 128);
-    // auto meshGroup = new MeshGroup();
-    // for (auto im : importedMeshData) {
-    //     auto mesh = im->toMesh();
-    //     mesh->thumbnail = thumbnailTexture;
-    //     // Now we decide which attributes to link with:
-    //     // For skeletal meshes with animations we use the gpu vertex skinned version, otherwise the "default one":
-    //     if (mesh->skeleton != nullptr && mesh->skeleton->animations.size() > 0) {
-    //         describeVertexAttributes(vertexAttributesAnimated, mesh->meshVertexBuffer, editorState.graphics.animatedShaderProgram, mesh->meshVertexArray);
-    //     } else {
-    //         describeVertexAttributes(vertexAttributes, mesh->meshVertexBuffer, editorState.graphics.shaderProgram, mesh->meshVertexArray);
-    //     }
-    //     editorState.meshPool[im->meshName] = mesh;
-    //     meshGroup->meshes.push_back(mesh);
-    // }
-    // editorState.importedMeshGroups.push_back(meshGroup);
-
+    {
+       importModelByFileName(editorState, "assets/test.glb");
+       importModelByFileName(editorState, "assets/origin_post.glb");
+    }
 
     // Root game object creation:
     // Holds all "real" user created game objects:
@@ -1504,12 +1808,44 @@ void initEditor(EditorState& editorState) {
     editorState.orthoCamera->view_matrix = glm::mat4(1);
     editorState.orthoCamera->projection_matrix = (glm::orthoLH_ZO<float>(0, editorState.screen_width,  editorState.screen_height, 0.0f, 0.0, 50));
 
-    editorState.graphics.quadVertexBuffer = createVertexBuffer(tri_vertices.data(), tri_vertices.size() * sizeof(float), sizeof(float) * 5);
-    associateVertexBufferWithVertexArray(editorState.graphics.quadVertexBuffer, editorState.graphics.quadVertexArray);
-    editorState.graphics.quadIndexBuffer = createIndexBuffer(tri_indices.data(), tri_indices.size() * sizeof(uint32_t));
-    associateIndexBufferWithVertexArray(editorState.graphics.quadIndexBuffer, editorState.graphics.quadVertexArray);
-    describeVertexAttributes(vertexAttributes, editorState.graphics.quadVertexBuffer, editorState.graphics.shaderProgram, editorState.graphics.quadVertexArray);
+    // Quad creation
+    {
+        editorState.graphics.quadVertexBuffer = createVertexBuffer(tri_vertices.data(), tri_vertices.size() * sizeof(float), sizeof(float) * 5);
+        associateVertexBufferWithVertexArray(editorState.graphics.quadVertexBuffer, editorState.graphics.quadVertexArray);
+        editorState.graphics.quadIndexBuffer = createIndexBuffer(tri_indices.data(), tri_indices.size() * sizeof(uint32_t));
+        associateIndexBufferWithVertexArray(editorState.graphics.quadIndexBuffer, editorState.graphics.quadVertexArray);
+        describeVertexAttributes(editorState.graphics.posUVVertexAttributes, editorState.graphics.quadVertexBuffer, editorState.graphics.shaderProgram, editorState.graphics.quadVertexArray);
+    }
 
+    // Grid creation for mesh editor
+    {
+        editorState.graphics.meshEditorGridVertexArray = createVertexArray();
+        bindVertexArray(editorState.graphics.meshEditorGridVertexArray);
+        editorState.meshEditorGridLines = 11;
+        auto grid_vertices_tuple = buildGridVertices(editorState.meshEditorGridLines);
+        auto grid_vertices = std::get<0>(grid_vertices_tuple);
+        auto grid_indices = std::get<1>(grid_vertices_tuple);
+        editorState.graphics.meshEditorGridVertexBuffer = createVertexBuffer(grid_vertices.data(), grid_vertices.size() * sizeof(float), sizeof(float) * 3);
+        associateVertexBufferWithVertexArray(editorState.graphics.meshEditorGridVertexBuffer, editorState.graphics.meshEditorGridVertexArray);
+        editorState.graphics.meshEditorGridIndexBuffer = createIndexBuffer(grid_indices.data(), grid_indices.size() * sizeof(uint32_t));
+        associateIndexBufferWithVertexArray(editorState.graphics.meshEditorGridIndexBuffer, editorState.graphics.meshEditorGridVertexArray);
+        describeVertexAttributes(editorState.graphics.positionOnlyVertexAttributes, editorState.graphics.meshEditorGridVertexBuffer, editorState.graphics.lineShaderProgram, editorState.graphics.meshEditorGridVertexArray);
+    }
+
+    // Grid creation for level editor
+    {
+        editorState.graphics.levelEditorGridVertexArray = createVertexArray();
+        bindVertexArray(editorState.graphics.levelEditorGridVertexArray);
+        editorState.meshEditorGridLines = 200;
+        auto grid_vertices_tuple = buildGridVertices(editorState.levelEditorGridLines);
+        auto grid_vertices = std::get<0>(grid_vertices_tuple);
+        auto grid_indices = std::get<1>(grid_vertices_tuple);
+        editorState.graphics.levelEditorGridVertexBuffer = createVertexBuffer(grid_vertices.data(), grid_vertices.size() * sizeof(float), sizeof(float) * 3);
+        associateVertexBufferWithVertexArray(editorState.graphics.levelEditorGridVertexBuffer, editorState.graphics.levelEditorGridVertexArray);
+        editorState.graphics.levelEditorGridIndexBuffer = createIndexBuffer(grid_indices.data(), grid_indices.size() * sizeof(uint32_t));
+        associateIndexBufferWithVertexArray(editorState.graphics.levelEditorGridIndexBuffer, editorState.graphics.levelEditorGridVertexArray);
+        describeVertexAttributes(editorState.graphics.positionOnlyVertexAttributes, editorState.graphics.levelEditorGridVertexBuffer, editorState.graphics.lineShaderProgram, editorState.graphics.levelEditorGridVertexArray);
+    }
 
     int image_width, image_height;
     auto pixels = load_image("assets/debug_texture.jpg", &image_width, &image_height);
@@ -1531,6 +1867,16 @@ void initEditor(EditorState& editorState) {
     editorState.texturePool["expand_start"] = createTextureFromFile("assets/expand_start.png");
     editorState.texturePool["expand_active"] = createTextureFromFile("assets/expand_active.png");
 
+    // Create for now a tab with the "current" level editor:
+    // TODO in the future we want to be able to edit multiple levels in separate tabs.
+
+    createTestProject(editorState);
+
+    auto currentLevelTab = new Tab{"Level1"};
+    currentLevelTab->type = TabType::Level;
+    currentLevelTab->tabHeader.titleTextMesh = createTextMesh(editorState.graphics.fontHandle, "Level1");
+    currentLevelTab->level = editorState.project->levels[0];
+    editorState.mainTabs.push_back(currentLevelTab);
 
 }
 
