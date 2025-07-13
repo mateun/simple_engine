@@ -156,8 +156,8 @@ struct EditorState {
     int levelEditorGridLines = 200;
 
     Project* project = nullptr;
-
-
+    bool paused = false;
+    bool minimized = false;
 };
 
 #endif //GAME_H

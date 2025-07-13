@@ -1244,9 +1244,27 @@ void check_menu_inputs(EditorState & editorState) {
 
 }
 
+void unpause(EditorState & editorState) {
+    editorState.paused = false;
+}
+
+void pause(EditorState& editorState) {
+    editorState.paused = true;
+}
+
+
 void check_resizing(EditorState& editorState) {
     auto new_width = resizedWidth();
     auto new_height = resizedHeight();
+    if (new_width == 0 || new_height == 0) {
+        editorState.minimized = true;
+        pause(editorState);
+        return;
+    }
+
+    if (editorState.paused) unpause(editorState);
+    if (editorState.minimized) { editorState.minimized = false; }
+
     if (new_width != editorState.screen_width || new_height != editorState.screen_height) {
         editorState.screen_width = new_width;
         editorState.screen_height = new_height;
@@ -1290,8 +1308,15 @@ void renderSplitters(EditorState & editorState) {
 
 void do_frame(const Win32Window & window, EditorState& editorState) {
 
+    if (editorState.paused) {
+        if (editorState.minimized) {
+            check_resizing(editorState);
+        }
+        return;
+    }
+
     update_camera(editorState);
-    check_resizing(editorState);
+
     check_menu_inputs(editorState);
     check_asset_browser_inputs(editorState);
     check_main_tab_inputs(editorState);

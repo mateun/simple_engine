@@ -121,7 +121,7 @@ void createDefaultDepthStencilBuffer(int width, int height) {
 
     auto result = device->CreateTexture2D(&td, 0, &depthStencilBuffer);
     if (FAILED(result)) {
-        OutputDebugString(L"D S buffer creation failed\n");
+        std::cout << "DepthStencil buffer creation failed! width: " << std::to_string(width) << " height: " << std::to_string(height) << std::endl;
         exit(1);
     }
 
