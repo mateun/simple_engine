@@ -446,6 +446,8 @@ void renderMeshEditor(int originX, int originY, int width, int height, EditorSta
 void renderGameObjectInLevelEditor(int originX, int originY, int width, int height, EditorState & editorState, GameObject* go) {
     // Render each mesh of this game object:
     if (go->renderData.meshGroup == nullptr) {
+        // If the gameObject itself has no mesh (which is valid, e.g. root does not have a mesh),
+        // we still must visit the game-object child-items to render them if necessary:
         for (auto child_go : go->children) {
             renderGameObjectInLevelEditor(originX, originY, width, height, editorState, child_go);
         }
@@ -1256,12 +1258,18 @@ void pause(EditorState& editorState) {
 void check_resizing(EditorState& editorState) {
     auto new_width = resizedWidth();
     auto new_height = resizedHeight();
+
+    // We are minimized, if width/height are 0.
+    // We then pause everything.
     if (new_width == 0 || new_height == 0) {
         editorState.minimized = true;
         pause(editorState);
         return;
     }
 
+    // If we come here, it means we are bigger than 0, so we are
+    // for sure no longer minimized and can unpause.
+    // In case we have been marked as minized, we un-minimize as well.
     if (editorState.paused) unpause(editorState);
     if (editorState.minimized) { editorState.minimized = false; }
 
@@ -1273,19 +1281,21 @@ void check_resizing(EditorState& editorState) {
         editorState.orthoCamera->view_matrix = glm::mat4(1);
         editorState.orthoCamera->projection_matrix = (glm::orthoLH_ZO<float>(0, editorState.screen_width,  editorState.screen_height, 0.0f, 0.0, 50));
 
-        editorState.perspectiveCamera->location = {0, 3, -6};
-        editorState.perspectiveCamera->lookAtTarget = {0, 0, 3};
+        editorState.perspectiveCamera->location = {0, 2, -6};
+        editorState.perspectiveCamera->lookAtTarget = {0, 2, 3};
         editorState.perspectiveCamera->view_matrix =editorState.perspectiveCamera->updateAndGetViewMatrix();
         editorState.perspectiveCamera->projection_matrix = editorState.perspectiveCamera->updateAndGetPerspectiveProjectionMatrix(65,
             editorState.screen_width, editorState.screen_height, 0.1, 100);
 
-        resizeFrameBuffer(editorState.graphics.frameBuffer3DPanel, editorState.screen_width - 200 * 2, editorState.screen_height - 64);
+        resizeFrameBuffer(editorState.graphics.frameBuffer3DPanel, editorState.screen_width - 200 * 2, editorState.screen_height - 96);
+        resizeFrameBuffer(editorState.graphics.frameBufferLevelEditorPanel, editorState.screen_width - 200 * 2, editorState.screen_height - 96);
         resizeFrameBuffer(editorState.graphics.frameBufferMainTabPanel, editorState.screen_width - 200 * 2, 32);
         resizeFrameBuffer(editorState.graphics.frameBufferTopMenu, new_width, 32);
         resizeFrameBuffer(editorState.graphics.frameBufferStatusBar, editorState.screen_width, 32);
         resizeFrameBuffer(editorState.graphics.frameBufferGameObjectTree, 200, editorState.screen_height-64);
         resizeFrameBuffer(editorState.graphics.frameBufferAssetPanel, 200, editorState.screen_height-64);
         resizeFrameBuffer(editorState.graphics.frameBufferAnimationPanel, editorState.screen_width - 200 * 2, 200);
+
     }
 }
 
@@ -1840,13 +1850,12 @@ void initEditor(EditorState& editorState) {
     bindVertexArray(editorState.graphics.quadVertexArray);
 
     editorState.perspectiveCamera = new Camera();
-    editorState.perspectiveCamera->location = {0, 2, -2};
-    editorState.perspectiveCamera->lookAtTarget = {0, 0, 3};
+    editorState.perspectiveCamera->location = {0, 2, -6};
+    editorState.perspectiveCamera->lookAtTarget = {0, 2, 3};
     editorState.perspectiveCamera->view_matrix =editorState.perspectiveCamera->updateAndGetViewMatrix();
     editorState.perspectiveCamera->projection_matrix = editorState.perspectiveCamera->updateAndGetPerspectiveProjectionMatrix(65,
         editorState.screen_width, editorState.screen_height, 0.1, 100);
-        // glm::perspectiveFovLH_ZO<float>(glm::radians(65.0f), editorState.screen_width,
-        //     editorState.screen_height, 0.1, 100);
+
 
     editorState.orthoCamera = new Camera();
     editorState.orthoCamera->view_matrix = glm::mat4(1);
