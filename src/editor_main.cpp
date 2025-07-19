@@ -6,10 +6,12 @@
 #include "editor.h"
 #include <vector>
 #define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 #include <codecvt>
 #include <d3d11_1.h>
 #include <ranges>
-#include <stb_image.h>
+
 #include <assimp/anim.h>
 #include <glm/glm.hpp>
 #include <glm/ext/matrix_clip_space.hpp>
@@ -20,7 +22,12 @@
 
 static float frame_time = 0.0f;
 
-void renderLevelEditor(int originX, int originY, int width, int height, EditorState & editorState, Level* meshGroup);
+void renderDropDownOverlays(EditorState & editorState);
+Camera* createDefaultPerspectiveCamera(EditorState & editorState);
+void renderLevelEditor(int originX, int originY, int width, int height, EditorState & editorState, Level* level);
+void renderGrid(GraphicsHandle targetFrameBuffer, EditorState& editorState, int viewport_width, int viewport_height, int lineCount, GraphicsHandle gridVertexArray);
+void renderMeshEditor(int originX, int originY, int width, int height, EditorState & editorState, MeshGroup* meshGroup);
+MeshGroup* importModelByFileName(EditorState& editorState, const std::string& fileName);
 void renderAnimationPanel(int originX, int originY, int width, int height, EditorState & editorState, Mesh* mesh);
 void render3DScenePanel(int originX, int originY, int width, int height, EditorState & editorState);
 void blitFramebufferToScreen(GraphicsHandle framebuffer, EditorState& editorState, int width, int height, int originX, int originY, float depth);
@@ -55,12 +62,16 @@ void do_sw_frame(Win32Window& window) {
 
 #endif
 
-void update_camera(EditorState& gameState) {
+Camera* getFocusPerspectiveCamera(EditorState & editorState) {
+    return editorState.tabCameraMap[editorState.currentMainTabTitle];
+}
+
+void check_camera_inputs(EditorState& editorState) {
     float movementSpeed = 10.0f;
     float camspeed = movementSpeed * frame_time;
     float rotspeed = movementSpeed * frame_time;
-    float dir = 0;
-    float hdir = 0;
+    float vertical_dir = 0;
+    float horizontal_dir = 0;
     float yaw = 0;
     float pitch = 0;
 
@@ -75,34 +86,70 @@ void update_camera(EditorState& gameState) {
     }
 
     if (isKeyDown('W')) {
-        dir = 1;
+        vertical_dir = 1;
     }
     if (isKeyDown('S')) {
-        dir = -1;
+        vertical_dir = -1;
     }
     if (isKeyDown('A')) {
-        hdir = 1;
+        horizontal_dir = 1;
     }
     if (isKeyDown('D')) {
-        hdir = -1;
+        horizontal_dir = -1;
+    }
+    if (isKeyDown(VK_UP)) {
+        pitch = -1;
+    }
+    if (isKeyDown(VK_DOWN)) {
+        pitch = 1;
     }
 
-    auto fwd = gameState.perspectiveCamera->getForward();
+    if (vertical_dir == 0 && horizontal_dir == 0 && yaw == 0 && pitch == 0) { return; }
 
-    auto up = gameState.perspectiveCamera->getUp();
+    // Everything camera related must happen to the current camera
+    // in focus:
+    auto focusCamera = getFocusPerspectiveCamera(editorState);
+    auto fwd = focusCamera->getForward();
+    auto right = focusCamera->getRight();
+    auto up = focusCamera->getUp();
 
     glm::vec4 fwdAfterYaw = glm::rotate(glm::mat4(1), yaw * rotspeed * 0.1f, up) * glm::vec4(fwd, 0);
 
-    auto locCandidate = gameState.perspectiveCamera->location + glm::vec3{camspeed * fwdAfterYaw.x, 0, camspeed * fwdAfterYaw.z} * dir;
+    auto angle = pitch * rotspeed * 0.1f;
 
-    auto right = gameState.perspectiveCamera->getRight();
-    locCandidate += glm::vec3{camspeed * right.x * 0.33, 0, camspeed * right.z * 0.33} * hdir;
+    glm::vec4 fwdAfterPitch = glm::rotate(glm::mat4(1), angle, right) * fwdAfterYaw;
 
-    // Do any checks if needed.
-    gameState.perspectiveCamera->location = locCandidate;
-    gameState.perspectiveCamera->lookAtTarget = locCandidate + glm::normalize(glm::vec3{fwdAfterYaw.x, fwdAfterYaw.y, fwdAfterYaw.z});
-    gameState.perspectiveCamera->updateAndGetViewMatrix();
+    auto location = focusCamera->location + glm::vec3{camspeed * fwdAfterYaw.x, 0, camspeed * fwdAfterYaw.z} * vertical_dir;
+    location +=  glm::vec3{camspeed * fwdAfterPitch.x, camspeed * fwdAfterPitch.y, camspeed * fwdAfterPitch.z} * vertical_dir;
+    location += glm::vec3{camspeed * right.x * 0.33, 0, camspeed * right.z * 0.33} * horizontal_dir;
 
+    // TODO add checks and pitch clamping.
+
+    focusCamera->location = location;
+    focusCamera->lookAtTarget = location + glm::normalize(glm::vec3{fwdAfterPitch.x, fwdAfterPitch.y, fwdAfterPitch.z});
+    focusCamera->updateAndGetViewMatrix();
+
+}
+
+void activateMainPerspectiveCameraFor3DPanel(int width, int height, EditorState& editorState) {
+
+    // editorState.perspectiveCamera->location = {0, 2, -6};
+    // editorState.perspectiveCamera->lookAtTarget = {0, 2, 3};
+    editorState.perspectiveCamera->view_matrix =editorState.perspectiveCamera->updateAndGetViewMatrix();
+    editorState.perspectiveCamera->projection_matrix = editorState.perspectiveCamera->updateAndGetPerspectiveProjectionMatrix(65,
+        width, height, 0.1, 100);
+
+}
+
+
+Camera createPerspectiveCameraFor3DPanel(int width, int height, EditorState& editorState) {
+    Camera camera;
+    camera.location = {0, 2, -6};
+    camera.lookAtTarget = {0, 2, 3};
+    camera.view_matrix =camera.updateAndGetViewMatrix();
+    camera.projection_matrix = camera.updateAndGetPerspectiveProjectionMatrix(65,
+        width, height, 0.1, 100);
+    return camera;
 }
 
 Camera activateOrthoCameraForPanel(int width, int height, EditorState& editorState) {
@@ -143,12 +190,26 @@ void renderTopMenu(int originX, int originY, int width, int height, EditorState&
         enableBlending(false);
         bindVertexArray(editorState.graphics.quadVertexArray);
         bindShaderProgram(editorState.graphics.shaderProgram);
+
+        // Render a blue background on hover.
+        // Render a drop-down menu.
         if (editorState.currentHoverMenuItem == menuItem) {
+            // Hover background of the main menu item
             bindTexture(editorState.texturePool["mid_blue_bg"], 0);
             auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(itemWidth+16, 32, 1));
             auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset-4 + (itemWidth/2) + 4, 16, 2)) * scaleMatrix;
             uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
             renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+
+            // The "dropdown" menu
+            bindTexture(editorState.texturePool["mid_blue_bg"], 0);
+            auto dropDownHeight = 136;
+            scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(itemWidth+48, dropDownHeight, 1));
+            // TODO reuse actual translation matrix from the hover-code:
+            worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset-4 + (itemWidth/2) + 4, 32+ dropDownHeight/2, 0.5)) * scaleMatrix;
+            uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+            renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+
         }
 
         enableBlending(true);
@@ -163,16 +224,6 @@ void renderTopMenu(int originX, int originY, int width, int height, EditorState&
     }
 
 
-
-
-    // Should be obsolete:
-    // Import Model menu item:
-    // textMesh = editorState.menuTextMeshes.tmModelImport;
-    // bindVertexArray(textMesh->meshVertexArray);
-    // scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
-    // worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(64, 24, 1)) *  scaleMatrix;
-    // uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-    // renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
 
     blitFramebufferToScreen(editorState.graphics.frameBufferTopMenu, editorState, width, height, originX, originY, 0.9);
 
@@ -234,8 +285,6 @@ void renderGameObjectsRecursive(EditorState & editorState, GameObject* rootGameO
 
             editorState.visibleGameObjectsWithChildrenTreeItems.push_back(go);
         }
-
-
 
         editorState.visibleGameObjectTreeItems.push_back(go);
 
@@ -314,7 +363,9 @@ void renderGrid(GraphicsHandle targetFrameBuffer, EditorState& editorState, int 
     setFrontCulling(false);
 
     bindFrameBuffer(targetFrameBuffer, 0, 0, viewport_width, viewport_height);
-    uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.perspectiveCamera->matrixBufferPtr(), sizeof(glm::mat4) * 2, 1);
+
+    auto panelCamera = getFocusPerspectiveCamera(editorState);
+    uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, panelCamera->matrixBufferPtr(), sizeof(glm::mat4) * 2, 1);
 
     bindShaderProgram(editorState.graphics.lineShaderProgram);
     bindVertexArray(gridVertexArray);
@@ -330,6 +381,10 @@ void renderMeshEditor(int originX, int originY, int width, int height, EditorSta
 
     bindFrameBuffer(editorState.graphics.frameBuffer3DPanel, 0, 0, width, height);
     clearFrameBuffer(editorState.graphics.frameBuffer3DPanel, .0, .0, 0.0, 1);
+
+    auto panelCamera = getFocusPerspectiveCamera(editorState);
+    panelCamera->updateAndGetPerspectiveProjectionMatrix(65.0f, width, height, 0.1f, 100.0f );
+    uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, panelCamera->matrixBufferPtr(), sizeof(glm::mat4) * 2, 1);
 
     renderGrid(editorState.graphics.frameBuffer3DPanel, editorState, width, height, editorState.meshEditorGridLines, editorState.graphics.meshEditorGridVertexArray);
 
@@ -425,7 +480,7 @@ void renderMeshEditor(int originX, int originY, int width, int height, EditorSta
         }
         bindFrameBuffer(editorState.graphics.frameBuffer3DPanel, 0, 0, width, height);
         bindVertexArray(mesh->meshVertexArray);
-        uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.perspectiveCamera->matrixBufferPtr(), sizeof(glm::mat4) * 2, 1);
+
         if (mesh->diffuseTexture.id != -1) {
             bindTexture(mesh->diffuseTexture, 0);
         } else {
@@ -573,7 +628,10 @@ void renderLevelEditor(int originX, int originY, int width, int height, EditorSt
     bindShaderProgram(editorState.graphics.shaderProgram3D);
     bindFrameBuffer(editorState.graphics.frameBufferLevelEditorPanel, 0, 0, width, height);
     clearFrameBuffer(editorState.graphics.frameBufferLevelEditorPanel, .0, .01, 0.0, 1);
-    uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, editorState.perspectiveCamera->matrixBufferPtr(), sizeof(glm::mat4) * 2, 1);
+
+    auto panelCamera = getFocusPerspectiveCamera(editorState);
+    panelCamera->updateAndGetPerspectiveProjectionMatrix(65.0f, width, height, 0.1f, 100.0f);
+    uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, panelCamera->matrixBufferPtr(), sizeof(glm::mat4) * 2, 1);
 
     renderGrid(editorState.graphics.frameBufferLevelEditorPanel, editorState, width, height, editorState.meshEditorGridLines, editorState.graphics.levelEditorGridVertexArray);
 
@@ -612,8 +670,10 @@ void renderLevelEditor(int originX, int originY, int width, int height, EditorSt
 
 }
 
-
 void renderMainViewportBody(int originX, int originY, int width, int height, EditorState & editorState) {
+
+    activateMainPerspectiveCameraFor3DPanel(width, height, editorState);
+
     auto currentTab = findTabByTitle(editorState.mainTabs, editorState.currentMainTabTitle);
     if (currentTab) {
         if (currentTab->type == TabType::Model) {
@@ -1073,7 +1133,7 @@ void renderMainTabPanel(int originX, int originY, int width, int height, EditorS
 void renderPanels(EditorState& editorState) {
 
     // Here we should know where every panel is, so we can give it its position as arguments.
-    // This is bettter than letting the panel know where it is supposed to be. It normally can not know it.
+    // This is better than letting the panel know where it is supposed to be. It normally can not know it.
     renderTopMenu(editorState.screen_width/2, 16, editorState.screen_width, 32, editorState);
     renderGameObjectTree(200/2, 32+ (editorState.screen_height-64)/2, 200, editorState.screen_height-64, editorState);
     renderMainTabPanel(editorState.screen_width/2, 32 + 16, editorState.screen_width - 400, 32, editorState);
@@ -1149,8 +1209,8 @@ void check_game_object_tree_inputs(EditorState& editorState) {
 }
 
 void check_main_tab_inputs(EditorState& editorState) {
-    int vOffset = 32;
-    int hOffset = 200;
+    int vOffset = 32;   // TODO change magic constant to actual top menubar height.
+    int hOffset = 200;  // TODO change magic constant to actual sidebar width.
     editorState.currentHoverTabTitle = "";
     int mouse_x = mouseX();
     int mouse_y = mouseY();
@@ -1167,6 +1227,7 @@ void check_main_tab_inputs(EditorState& editorState) {
 }
 
 void check_asset_browser_inputs(EditorState & editorState) {
+    // TODO get rid of these magic constants.
     int topOffset = 72 - editorState.assetVBrowserVScrollOffset ;
     int vSize = 128;
     int vMargin = 16;
@@ -1194,6 +1255,7 @@ void check_asset_browser_inputs(EditorState & editorState) {
                     modelTab->type = TabType::Model;
                     modelTab->meshGroup = meshGroup;
                     editorState.mainTabs.push_back(modelTab);
+                    editorState.tabCameraMap[name] =createDefaultPerspectiveCamera(editorState);
                 }
             }
         }
@@ -1217,6 +1279,14 @@ void check_asset_browser_inputs(EditorState & editorState) {
     }
 }
 
+/**
+ * This function checks if the mouse is over one of the top menu items.
+ * If the mouse is over an item, the item is marked as being hovered.
+ * If the mouse is clicked over an item, we call an action bound to
+ * this menu item.
+ *
+ * @param editorState The editor state which is our main global state holder.
+ */
 void check_menu_inputs(EditorState & editorState) {
     int vOffset = 0;
     int hOffset = 0;
@@ -1234,15 +1304,6 @@ void check_menu_inputs(EditorState & editorState) {
             }
         }
     }
-
-    //
-    // if (mouseX() > 64 && mouseX() < 200 && mouseY() > 12 && mouseY() < 32) {
-    //     if (mouseLeftClick()) {
-    //
-    //
-    //
-    //     }
-    // }
 
 }
 
@@ -1274,6 +1335,7 @@ void check_resizing(EditorState& editorState) {
     if (editorState.minimized) { editorState.minimized = false; }
 
     if (new_width != editorState.screen_width || new_height != editorState.screen_height) {
+        std::cout << "resizing to : " << std::to_string(new_width) << "/" << std::to_string(new_height) << std::endl;
         editorState.screen_width = new_width;
         editorState.screen_height = new_height;
         resizeSwapChain(editorState.window->get_hwnd(), new_width, new_height);
@@ -1316,6 +1378,139 @@ void renderSplitters(EditorState & editorState) {
     renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
 }
 
+/**
+ * As the name suggests, this is a temporary test function which renders a unit cube directly
+ * to the main/default backbuffer. It serves mainly to check the aspet ratio correct rendering.
+ * @param editor_state
+ */
+void renderUnitCubeTestScene(EditorState & editorState) {
+    setFrontCulling(false);
+    enableBlending(false);
+
+    auto width = editorState.screen_width - 400;
+    auto height = editorState.screen_height - 96;
+    auto originX = 200;
+    auto originY = 32 + (editorState.screen_height - 96/2);
+    bindFrameBuffer(editorState.graphics.frameBuffer3DPanel, 0, 0, width, height);
+    clearFrameBuffer(editorState.graphics.frameBuffer3DPanel, .0, .0, 0.0, 1);
+
+    // Framebuffer specific camera:
+    auto camera = Camera();
+    camera.location = {0, 2, -6};
+    camera.lookAtTarget = {0, 2, 3};
+    camera.view_matrix =camera.updateAndGetViewMatrix();
+    camera.projection_matrix = camera.updateAndGetPerspectiveProjectionMatrix(65,
+        width, height, 0.1, 100);
+    uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, camera.matrixBufferPtr(), sizeof(Camera), 1);
+
+    //auto camera = activatePerspectiveCameraFor3DPanel(width, height, editorState);
+    renderGrid(editorState.graphics.frameBuffer3DPanel, editorState, width, height, editorState.meshEditorGridLines, editorState.graphics.meshEditorGridVertexArray);
+
+
+    static MeshGroup* meshGroup = nullptr;
+    if (meshGroup == nullptr) {
+        meshGroup = importModelByFileName(editorState, "assets/unitcube.glb");
+    }
+
+    // Render each mesh of this group:
+    uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, camera.matrixBufferPtr(), sizeof(Camera), 1);
+    for (auto mesh : meshGroup->meshes) {
+
+        bindShaderProgram(editorState.graphics.shaderProgram3D);
+        bindVertexArray(mesh->meshVertexArray);
+
+        if (mesh->diffuseTexture.id != -1) {
+            bindTexture(mesh->diffuseTexture, 0);
+        } else {
+            bindTexture(editorState.texturePool["debug_texture"], 0);
+        }
+
+        auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+        auto worldMatrix = glm::translate(glm::mat4(1.0f), {0, 0, 0}) * scaleMatrix;
+        uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, mesh->index_count, 0);
+
+    }
+
+    blitFramebufferToScreen(editorState.graphics.frameBuffer3DPanel, editorState, width, height, 200+width/2, 32 + height/2, 0.9);
+
+}
+
+
+/**
+ * This function renders dropdown menus for each currently open/active menuitem.
+ * The menu-item
+ *
+ */
+void renderDropDownOverlays(EditorState & editorState) {
+    //
+    // setFrontCulling(true);
+    // bindVertexArray(editorState.graphics.quadVertexArray);
+    // bindFrameBuffer(editorState.graphics.frameBufferTopMenu, 0, 0, width, height);
+    // clearFrameBuffer(editorState.graphics.frameBufferTopMenu, 0.1, .1, 0.11, 1);
+    //
+    // // Specific projection cam for this panel:
+    // Camera cam;
+    // cam.view_matrix = glm::mat4(1);
+    // cam.projection_matrix = glm::orthoLH_ZO<float>(0.0f, (float) width, (float) height, 0.0f, 0.0, 30);
+    // uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, cam.matrixBufferPtr(), sizeof(Camera), 1);
+    //
+    // // Render actual menu items
+    // enableBlending(true);
+    // int accumulatedTextLength = 0;
+    // for (auto menuItem : editorState.topMenuItems) {
+    //
+    //     int hOffset = 8 + accumulatedTextLength;
+    //     auto textMesh = menuItem->textMesh;
+    //     auto textBB = measureText(editorState.graphics.fontHandleBig, menuItem->name);
+    //     auto itemWidth = textBB.right - textBB.left;
+    //     accumulatedTextLength += itemWidth + 24;
+    //
+    //     // The background rectangle for hovering effect:
+    //     enableBlending(false);
+    //     bindVertexArray(editorState.graphics.quadVertexArray);
+    //     bindShaderProgram(editorState.graphics.shaderProgram);
+    //
+    //     // Render a blue background on hover.
+    //     // Render a drop-down menu.
+    //     if (editorState.currentHoverMenuItem == menuItem) {
+    //         // Hover background of the main menu item
+    //         bindTexture(editorState.texturePool["mid_blue_bg"], 0);
+    //         auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(itemWidth+16, 32, 1));
+    //         auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset-4 + (itemWidth/2) + 4, 16, 2)) * scaleMatrix;
+    //         uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+    //         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+    //
+    //         // The "dropdown" menu
+    //         bindTexture(editorState.texturePool["mid_blue_bg"], 0);
+    //         auto dropDownHeight = 136;
+    //         scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(itemWidth+48, dropDownHeight, 1));
+    //         // TODO reuse actual translation matrix from the hover-code:
+    //         worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset-4 + (itemWidth/2) + 4, 32+ dropDownHeight/2, 0.5)) * scaleMatrix;
+    //         uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+    //         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+    //
+    //     }
+    //
+    //     enableBlending(true);
+    //     bindShaderProgram(editorState.graphics.textShaderProgram);
+    //     bindVertexArray(textMesh->meshVertexArray);
+    //     bindTexture(getTextureFromFont(editorState.graphics.fontHandleBig), 0);
+    //     auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+    //     auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset, 20, 1)) *  scaleMatrix;
+    //     menuItem->renderBoundingBox = {(float)hOffset-4, 0, (float)hOffset-4 + itemWidth + 16, 32};
+    //     uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+    //     renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+    // }
+    //
+    //
+    //
+    // blitFramebufferToScreen(editorState.graphics.frameBufferTopMenu, editorState, width, height, originX, originY, 0.9);
+
+
+
+}
+
 void do_frame(const Win32Window & window, EditorState& editorState) {
 
     if (editorState.paused) {
@@ -1325,8 +1520,8 @@ void do_frame(const Win32Window & window, EditorState& editorState) {
         return;
     }
 
-    update_camera(editorState);
-
+    check_resizing(editorState);
+    check_camera_inputs(editorState);
     check_menu_inputs(editorState);
     check_asset_browser_inputs(editorState);
     check_main_tab_inputs(editorState);
@@ -1337,6 +1532,9 @@ void do_frame(const Win32Window & window, EditorState& editorState) {
 
     renderPanels(editorState);
     renderSplitters(editorState);
+    renderDropDownOverlays(editorState);
+
+    //renderUnitCubeTestScene(editorState);
 
     present();
 }
@@ -1721,7 +1919,7 @@ std::tuple<std::vector<float>, std::vector<uint32_t>> buildGridVertices(int numb
 
 }
 
-void importModelByFileName(EditorState& editorState, const std::string& fileName) {
+MeshGroup* importModelByFileName(EditorState& editorState, const std::string& fileName) {
     auto importedMeshData = importMeshFromFile(fileName);
     auto thumbnailTexture = createThumbnailForMesh(importedMeshData, editorState.graphics.shaderProgram3D,
         editorState.graphics.objectTransformBuffer, editorState.graphics.cameraTransformBuffer, editorState.vertexAttributes, 128, 128);
@@ -1742,6 +1940,18 @@ void importModelByFileName(EditorState& editorState, const std::string& fileName
         meshGroup->meshes.push_back(mesh);
     }
     editorState.importedMeshGroups.push_back(meshGroup);
+    return meshGroup;
+}
+
+Camera* createDefaultPerspectiveCamera(EditorState & editorState) {
+    auto camera = new Camera();
+    camera->location = {0, 2, -6};
+    camera->lookAtTarget = {0, 2, 3};
+    camera->view_matrix = camera->updateAndGetViewMatrix();
+    camera->projection_matrix = camera->updateAndGetPerspectiveProjectionMatrix(65,
+        editorState.screen_width, editorState.screen_height, 0.1, 100);
+
+    return camera;
 }
 
 void initEditor(EditorState& editorState) {
@@ -1818,7 +2028,7 @@ void initEditor(EditorState& editorState) {
     editorState.topMenuItems.push_back(new MenuItem{"Settings", editorState.menuTextMeshes.tmSettings});
 
     // Prepare an offscreen framebuffer for the 3d scene:
-    editorState.graphics.frameBuffer3DPanel = createFrameBuffer(editorState.screen_width - 200 * 2, editorState.screen_height - 64, true);
+    editorState.graphics.frameBuffer3DPanel = createFrameBuffer(editorState.screen_width - 200 * 2, editorState.screen_height - 96, true);
     editorState.graphics.frameBufferMainTabPanel = createFrameBuffer(editorState.screen_width - 200 * 2, 32 , true);
     editorState.graphics.frameBufferTopMenu = createFrameBuffer(editorState.screen_width, 32, true);
     editorState.graphics.frameBufferStatusBar = createFrameBuffer(editorState.screen_width, 32, true);
@@ -1826,6 +2036,7 @@ void initEditor(EditorState& editorState) {
     editorState.graphics.frameBufferAssetPanel = createFrameBuffer(200, editorState.screen_height-64, true);
     editorState.graphics.frameBufferAnimationPanel = createFrameBuffer(editorState.screen_width - 200 * 2, 200, true);
     editorState.graphics.frameBufferLevelEditorPanel = createFrameBuffer(editorState.screen_width - 200 * 2, editorState.screen_height - 64, true);
+    editorState.graphics.frameBufferDropDownOverlayPanel = createFrameBuffer(editorState.screen_width, editorState.screen_height, true);
 
     // Create constant buffers:
     editorState.graphics.skinningMatricesCBuffer = createConstantBuffer(sizeof(glm::mat4) * 50);  // TODO have one per skeleton and adjust to the number of actual joints
@@ -1849,13 +2060,7 @@ void initEditor(EditorState& editorState) {
     editorState.graphics.quadVertexArray = createVertexArray();
     bindVertexArray(editorState.graphics.quadVertexArray);
 
-    editorState.perspectiveCamera = new Camera();
-    editorState.perspectiveCamera->location = {0, 2, -6};
-    editorState.perspectiveCamera->lookAtTarget = {0, 2, 3};
-    editorState.perspectiveCamera->view_matrix =editorState.perspectiveCamera->updateAndGetViewMatrix();
-    editorState.perspectiveCamera->projection_matrix = editorState.perspectiveCamera->updateAndGetPerspectiveProjectionMatrix(65,
-        editorState.screen_width, editorState.screen_height, 0.1, 100);
-
+    editorState.perspectiveCamera = createDefaultPerspectiveCamera(editorState);
 
     editorState.orthoCamera = new Camera();
     editorState.orthoCamera->view_matrix = glm::mat4(1);
@@ -1920,18 +2125,20 @@ void initEditor(EditorState& editorState) {
     editorState.texturePool["expand_start"] = createTextureFromFile("assets/expand_start.png");
     editorState.texturePool["expand_active"] = createTextureFromFile("assets/expand_active.png");
 
-    // Create for now a tab with the "current" level editor:
-    // TODO in the future we want to be able to edit multiple levels in separate tabs.
+    {
+        // Create for now a tab with the "current" level editor:
+        // TODO in the future we want to be able to edit multiple levels in separate tabs.
+        createTestProject(editorState);
 
-    createTestProject(editorState);
+        auto currentLevelTab = new Tab{"Level1"};
+        currentLevelTab->type = TabType::Level;
+        currentLevelTab->tabHeader.titleTextMesh = createTextMesh(editorState.graphics.fontHandle, "Level1");
+        currentLevelTab->level = editorState.project->levels[0];
+        editorState.mainTabs.push_back(currentLevelTab);
+        editorState.currentMainTabTitle = "Level1";
+        editorState.tabCameraMap["Level1"] = createDefaultPerspectiveCamera(editorState);
+    }
 
-    auto currentLevelTab = new Tab{"Level1"};
-    currentLevelTab->type = TabType::Level;
-    currentLevelTab->tabHeader.titleTextMesh = createTextMesh(editorState.graphics.fontHandle, "Level1");
-    currentLevelTab->level = editorState.project->levels[0];
-    editorState.mainTabs.push_back(currentLevelTab);
-
-    editorState.currentMainTabTitle = "Level1";
 
 }
 

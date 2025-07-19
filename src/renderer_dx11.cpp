@@ -614,8 +614,6 @@ void updateBuffer(GraphicsHandle bufferHandle, BufferType bufferType, void* data
 }
 
 void resizeSwapChain(HWND hwnd, int width, int height) {
-
-
     ctx->OMSetRenderTargets(0, nullptr, nullptr);
     ID3D11ShaderResourceView* nullsrvs[16] = {nullptr};
     ctx->VSSetShaderResources(0, 16, nullsrvs);
@@ -643,9 +641,6 @@ void resizeSwapChain(HWND hwnd, int width, int height) {
     if (FAILED(hr)) {
         exit(2);
     }
-
-    // width = 1280;
-    // height = 720;
 
     DXGI_SWAP_CHAIN_DESC desc;
 

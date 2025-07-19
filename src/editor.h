@@ -58,15 +58,12 @@ struct alignas(16) ObjectTransformBuffer {
     glm::mat4 world_matrix;
 };
 
-
-
-
-
 struct EditorState {
 
     Win32Window* window;
     std::map<std::string, MeshGroup*> meshGroupPool;
     std::map<std::string, GraphicsHandle> texturePool;
+    std::map<std::string, Camera*> tabCameraMap;
 
     struct MenuTextMeshes {
         Mesh* tmFile;
@@ -107,6 +104,7 @@ struct EditorState {
         GraphicsHandle frameBufferThumbnail;
         GraphicsHandle frameBufferAnimationPanel;
         GraphicsHandle frameBufferLevelEditorPanel;
+        GraphicsHandle frameBufferDropDownOverlayPanel;
         GraphicsHandle shaderProgram3D;
         GraphicsHandle lineShaderProgram;
 
