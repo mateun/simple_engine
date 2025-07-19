@@ -22,6 +22,7 @@
 
 static float frame_time = 0.0f;
 
+void blitFramebufferToScreen(GraphicsHandle framebuffer, EditorState& editorState, int width, int height, int originX, int originY, float depth, bool blend = false);
 void renderDropDownOverlays(EditorState & editorState);
 Camera* createDefaultPerspectiveCamera(EditorState & editorState);
 void renderLevelEditor(int originX, int originY, int width, int height, EditorState & editorState, Level* level);
@@ -30,7 +31,7 @@ void renderMeshEditor(int originX, int originY, int width, int height, EditorSta
 MeshGroup* importModelByFileName(EditorState& editorState, const std::string& fileName);
 void renderAnimationPanel(int originX, int originY, int width, int height, EditorState & editorState, Mesh* mesh);
 void render3DScenePanel(int originX, int originY, int width, int height, EditorState & editorState);
-void blitFramebufferToScreen(GraphicsHandle framebuffer, EditorState& editorState, int width, int height, int originX, int originY, float depth);
+
 
 void clear_screen(int width, int height, Win32Window& window, uint32_t *pixels32) {
     auto start_clear = window.performance_count();
@@ -829,9 +830,9 @@ void render3DScenePanel(int originX, int originY, int width, int height, EditorS
 
 }
 
-void blitFramebufferToScreen(GraphicsHandle framebuffer, EditorState& editorState, int width, int height, int originX, int originY, float depth) {
+void blitFramebufferToScreen(GraphicsHandle framebuffer, EditorState& editorState, int width, int height, int originX, int originY, float depth, bool blend) {
     // Blit quad to default framebuffer:
-    enableBlending(false);
+    enableBlending(blend);
     bindDefaultBackbuffer(0, 0, editorState.screen_width, editorState.screen_height);
     bindVertexArray(editorState.graphics.quadVertexArray);
     bindShaderProgram(editorState.graphics.shaderProgram);
@@ -1439,73 +1440,77 @@ void renderUnitCubeTestScene(EditorState & editorState) {
 
 /**
  * This function renders dropdown menus for each currently open/active menuitem.
- * The menu-item
+ * The active menu-items must register themselves in the editorState and will
+ * then be rendered their respective dropdown menu items.
+ * TODO nested menus?!
  *
  */
 void renderDropDownOverlays(EditorState & editorState) {
-    //
-    // setFrontCulling(true);
-    // bindVertexArray(editorState.graphics.quadVertexArray);
-    // bindFrameBuffer(editorState.graphics.frameBufferTopMenu, 0, 0, width, height);
-    // clearFrameBuffer(editorState.graphics.frameBufferTopMenu, 0.1, .1, 0.11, 1);
-    //
-    // // Specific projection cam for this panel:
-    // Camera cam;
-    // cam.view_matrix = glm::mat4(1);
-    // cam.projection_matrix = glm::orthoLH_ZO<float>(0.0f, (float) width, (float) height, 0.0f, 0.0, 30);
-    // uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, cam.matrixBufferPtr(), sizeof(Camera), 1);
-    //
-    // // Render actual menu items
-    // enableBlending(true);
-    // int accumulatedTextLength = 0;
-    // for (auto menuItem : editorState.topMenuItems) {
-    //
-    //     int hOffset = 8 + accumulatedTextLength;
-    //     auto textMesh = menuItem->textMesh;
-    //     auto textBB = measureText(editorState.graphics.fontHandleBig, menuItem->name);
-    //     auto itemWidth = textBB.right - textBB.left;
-    //     accumulatedTextLength += itemWidth + 24;
-    //
-    //     // The background rectangle for hovering effect:
-    //     enableBlending(false);
-    //     bindVertexArray(editorState.graphics.quadVertexArray);
-    //     bindShaderProgram(editorState.graphics.shaderProgram);
-    //
-    //     // Render a blue background on hover.
-    //     // Render a drop-down menu.
-    //     if (editorState.currentHoverMenuItem == menuItem) {
-    //         // Hover background of the main menu item
-    //         bindTexture(editorState.texturePool["mid_blue_bg"], 0);
-    //         auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(itemWidth+16, 32, 1));
-    //         auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset-4 + (itemWidth/2) + 4, 16, 2)) * scaleMatrix;
-    //         uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-    //         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
-    //
-    //         // The "dropdown" menu
-    //         bindTexture(editorState.texturePool["mid_blue_bg"], 0);
-    //         auto dropDownHeight = 136;
-    //         scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(itemWidth+48, dropDownHeight, 1));
-    //         // TODO reuse actual translation matrix from the hover-code:
-    //         worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset-4 + (itemWidth/2) + 4, 32+ dropDownHeight/2, 0.5)) * scaleMatrix;
-    //         uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-    //         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
-    //
-    //     }
-    //
-    //     enableBlending(true);
-    //     bindShaderProgram(editorState.graphics.textShaderProgram);
-    //     bindVertexArray(textMesh->meshVertexArray);
-    //     bindTexture(getTextureFromFont(editorState.graphics.fontHandleBig), 0);
-    //     auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
-    //     auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset, 20, 1)) *  scaleMatrix;
-    //     menuItem->renderBoundingBox = {(float)hOffset-4, 0, (float)hOffset-4 + itemWidth + 16, 32};
-    //     uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-    //     renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
-    // }
-    //
-    //
-    //
-    // blitFramebufferToScreen(editorState.graphics.frameBufferTopMenu, editorState, width, height, originX, originY, 0.9);
+
+    auto width = editorState.screen_width;
+    auto height = editorState.screen_height;
+
+    setFrontCulling(true);
+    bindVertexArray(editorState.graphics.quadVertexArray);
+    bindFrameBuffer(editorState.graphics.frameBufferDropDownOverlayPanel, 0, 0, width, height);
+    clearFrameBuffer(editorState.graphics.frameBufferDropDownOverlayPanel, 0.1, 0, 0.0, 0.1);
+
+    // Specific ortho projection cam for this panel:
+    Camera cam;
+    cam.view_matrix = glm::mat4(1);
+    cam.projection_matrix = glm::orthoLH_ZO<float>(0.0f, (float) width, (float) height, 0.0f, 0.0, 30);
+    uploadConstantBufferData( editorState.graphics.cameraTransformBuffer, cam.matrixBufferPtr(), sizeof(Camera), 1);
+
+    // Render actual menu items
+    enableBlending(true);
+    int accumulatedTextLength = 0;
+    for (auto menuItem : editorState.topMenuItems) {
+
+        int hOffset = 8 + accumulatedTextLength;
+        auto textMesh = menuItem->textMesh;
+        auto textBB = measureText(editorState.graphics.fontHandleBig, menuItem->name);
+        auto itemWidth = textBB.right - textBB.left;
+        accumulatedTextLength += itemWidth + 24;
+
+        // The background rectangle for hovering effect:
+        enableBlending(false);
+        bindVertexArray(editorState.graphics.quadVertexArray);
+        bindShaderProgram(editorState.graphics.shaderProgram);
+
+        // Render a blue background on hover.
+        // Render a drop-down menu.
+        if (editorState.currentHoverMenuItem == menuItem) {
+
+            // Hover effect matrices:
+            auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(itemWidth+16, 32, 1));
+            auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset-4 + (itemWidth/2) + 4, 16, 2)) * scaleMatrix;
+
+            // The "dropdown" menu
+            bindTexture(editorState.texturePool["mid_blue_bg"], 0);
+            auto dropDownHeight = 136;
+            scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(itemWidth+48, dropDownHeight, 1));
+            worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset + (itemWidth/2), 32+ dropDownHeight/2, 0.5)) * scaleMatrix;
+            uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+            renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+
+        }
+
+        // TODO render actual menu item texts
+        // TODO provide all submenu items
+        // enableBlending(true);
+        // bindShaderProgram(editorState.graphics.textShaderProgram);
+        // bindVertexArray(textMesh->meshVertexArray);
+        // bindTexture(getTextureFromFont(editorState.graphics.fontHandleBig), 0);
+        // auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+        // auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset, 20, 1)) *  scaleMatrix;
+        // menuItem->renderBoundingBox = {(float)hOffset-4, 0, (float)hOffset-4 + itemWidth + 16, 32};
+        // uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+        // renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
+    }
+
+
+
+    blitFramebufferToScreen(editorState.graphics.frameBufferDropDownOverlayPanel, editorState, width, height, width/2, height/2, 0.1, true);
 
 
 
