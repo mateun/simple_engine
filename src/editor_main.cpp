@@ -184,30 +184,24 @@ void renderTopMenu(int originX, int originY, int width, int height, EditorState&
         int hOffset = 8 + accumulatedTextLength;
         auto textMesh = menuItem->textMesh;
         auto textBB = measureText(editorState.graphics.fontHandleBig, menuItem->name);
-        auto itemWidth = textBB.right - textBB.left;
-        accumulatedTextLength += itemWidth + 24;
+        auto textItemWidth = textBB.right - textBB.left;
+        accumulatedTextLength += textItemWidth + 24;
 
         // The background rectangle for hovering effect:
         enableBlending(false);
         bindVertexArray(editorState.graphics.quadVertexArray);
         bindShaderProgram(editorState.graphics.shaderProgram);
 
+        auto hoverWidth = textItemWidth + 16;
+        auto halfHoverWidth = hoverWidth / 2;
+
         // Render a blue background on hover.
         // Render a drop-down menu.
         if (editorState.currentHoverMenuItem == menuItem) {
             // Hover background of the main menu item
             bindTexture(editorState.texturePool["mid_blue_bg"], 0);
-            auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(itemWidth+16, 32, 1));
-            auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset-4 + (itemWidth/2) + 4, 16, 2)) * scaleMatrix;
-            uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-            renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
-
-            // The "dropdown" menu
-            bindTexture(editorState.texturePool["mid_blue_bg"], 0);
-            auto dropDownHeight = 136;
-            scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(itemWidth+48, dropDownHeight, 1));
-            // TODO reuse actual translation matrix from the hover-code:
-            worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset-4 + (itemWidth/2) + 4, 32+ dropDownHeight/2, 0.5)) * scaleMatrix;
+            auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(hoverWidth, 32, 1));
+            auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(-8.0f + hOffset + halfHoverWidth , 16, 2)) * scaleMatrix;
             uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
             renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
 
@@ -219,7 +213,7 @@ void renderTopMenu(int originX, int originY, int width, int height, EditorState&
         bindTexture(getTextureFromFont(editorState.graphics.fontHandleBig), 0);
         auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
         auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset, 20, 1)) *  scaleMatrix;
-        menuItem->renderBoundingBox = {(float)hOffset-4, 0, (float)hOffset-4 + itemWidth + 16, 32};
+        menuItem->renderBoundingBox = {(float)hOffset-4, 0, (float)hOffset-4 + textItemWidth + 16, 32};
         uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
     }
@@ -1358,7 +1352,7 @@ void check_resizing(EditorState& editorState) {
         resizeFrameBuffer(editorState.graphics.frameBufferGameObjectTree, 200, editorState.screen_height-64);
         resizeFrameBuffer(editorState.graphics.frameBufferAssetPanel, 200, editorState.screen_height-64);
         resizeFrameBuffer(editorState.graphics.frameBufferAnimationPanel, editorState.screen_width - 200 * 2, 200);
-
+        resizeFrameBuffer(editorState.graphics.frameBufferDropDownOverlayPanel, editorState.screen_width, editorState.screen_height);
     }
 }
 
@@ -1453,7 +1447,7 @@ void renderDropDownOverlays(EditorState & editorState) {
     setFrontCulling(true);
     bindVertexArray(editorState.graphics.quadVertexArray);
     bindFrameBuffer(editorState.graphics.frameBufferDropDownOverlayPanel, 0, 0, width, height);
-    clearFrameBuffer(editorState.graphics.frameBufferDropDownOverlayPanel, 0.1, 0, 0.0, 0.1);
+    clearFrameBuffer(editorState.graphics.frameBufferDropDownOverlayPanel, 0.0, 0, 0.0, 0.0);
 
     // Specific ortho projection cam for this panel:
     Camera cam;
@@ -1477,19 +1471,23 @@ void renderDropDownOverlays(EditorState & editorState) {
         bindVertexArray(editorState.graphics.quadVertexArray);
         bindShaderProgram(editorState.graphics.shaderProgram);
 
+        auto hoverWidth = itemWidth+16;
+        auto dropDownWidth = 100;    // TODO this should be dynamically calculated for the longest menu item
+        auto halfDropDownWidth = dropDownWidth/2;
+
         // Render a blue background on hover.
         // Render a drop-down menu.
         if (editorState.currentHoverMenuItem == menuItem) {
 
             // Hover effect matrices:
-            auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(itemWidth+16, 32, 1));
-            auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset-4 + (itemWidth/2) + 4, 16, 2)) * scaleMatrix;
+            // auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(hoverWidth, 32, 1));
+            // auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset + (itemWidth/2) , 16, 2)) * scaleMatrix;
 
             // The "dropdown" menu
             bindTexture(editorState.texturePool["mid_blue_bg"], 0);
             auto dropDownHeight = 136;
-            scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(itemWidth+48, dropDownHeight, 1));
-            worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset + (itemWidth/2), 32+ dropDownHeight/2, 0.5)) * scaleMatrix;
+            auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(dropDownWidth, dropDownHeight, 1));
+            auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(-8.0f + hOffset + halfDropDownWidth, 32+ dropDownHeight/2, 0.5)) * scaleMatrix;
             uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
             renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
 
