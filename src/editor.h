@@ -60,6 +60,7 @@ struct alignas(16) ObjectTransformBuffer {
 
 struct DropDownItem {
     BoundingBox renderBoundingBox;
+    std::vector<MenuItem*> menuItems;
 };
 
 struct EditorState {
