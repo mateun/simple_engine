@@ -194,12 +194,14 @@ struct Tab {
     BoundingBox renderBoundingBox;
 };
 
+struct DropDownItem;
 struct EditorState;
 struct MenuItem {
     std::string name;
     Mesh* textMesh = nullptr;
     BoundingBox renderBoundingBox = {};
     std::function<void(EditorState&)> action;
+    DropDownItem* dropDownMenu = nullptr;
 
 };
 

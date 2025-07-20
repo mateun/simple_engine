@@ -58,6 +58,10 @@ struct alignas(16) ObjectTransformBuffer {
     glm::mat4 world_matrix;
 };
 
+struct DropDownItem {
+    BoundingBox renderBoundingBox;
+};
+
 struct EditorState {
 
     Win32Window* window;
@@ -156,6 +160,11 @@ struct EditorState {
     Project* project = nullptr;
     bool paused = false;
     bool minimized = false;
+    std::vector<DropDownItem> dropDownsActiveMenuItem;
+    std::vector<DropDownItem> dropDownsActiveHovered;
+    std::vector<DropDownItem*> dropDownsActive;
+    float menuHoverMargin = 4.0f;
+
 };
 
 #endif //GAME_H
