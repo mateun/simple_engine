@@ -17,6 +17,11 @@ static int timer_token_counter = 0;
 std::map<int, LARGE_INTEGER> timer_tokens;
 static WPARAM last_key_press_ = 0;
 
+void winConsumeLeftClick() {
+    lbuttonDown = false;
+    lbuttonUp = false;
+}
+
 bool winLeftDoubleClick() {
     return leftDoubleClick;
 }

@@ -60,6 +60,7 @@ struct alignas(16) ObjectTransformBuffer {
 
 struct DropDownItem {
     BoundingBox renderBoundingBox;
+    BoundingBox globalMouseBoundingBox;
     std::vector<MenuItem*> menuItems;
 };
 
@@ -155,6 +156,7 @@ struct EditorState {
     GameObject* currentHoverExpandItem;
     GameObject* currentSelectedGameObjectTreeItem = nullptr;
     MenuItem* currentHoverMenuItem = nullptr;
+    MenuItem * currentHoverDropDownMenuItem = nullptr;
     int meshEditorGridLines = 23;
     int levelEditorGridLines = 200;
 

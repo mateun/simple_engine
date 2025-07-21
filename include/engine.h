@@ -376,12 +376,11 @@ void drawLine(Win32Window& window, int x1, int y1, int x2, int y2, int color);
 void gl_clear(float r, float g, float b, float a);
 void gl_init(HWND hwnd, bool msaa, int msaa_samples);
 
-
-
 int mouseX();
 int mouseY();
 bool mouseLeftDoubleClick();
 bool mouseLeftClick();
+void mouseLeftClickConsumed();
 bool isKeyDown(int key);
 bool keyPressed(int key);
 int resizedWidth();

@@ -32,7 +32,6 @@ MeshGroup* importModelByFileName(EditorState& editorState, const std::string& fi
 void renderAnimationPanel(int originX, int originY, int width, int height, EditorState & editorState, Mesh* mesh);
 void render3DScenePanel(int originX, int originY, int width, int height, EditorState & editorState);
 
-
 void clear_screen(int width, int height, Win32Window& window, uint32_t *pixels32) {
     auto start_clear = window.performance_count();
     memset(pixels32, 0, width * height * 4);
@@ -125,7 +124,6 @@ void check_camera_inputs(EditorState& editorState) {
     location += glm::vec3{camspeed * right.x * 0.33, 0, camspeed * right.z * 0.33} * horizontal_dir;
 
     // TODO add checks and pitch clamping.
-
     focusCamera->location = location;
     focusCamera->lookAtTarget = location + glm::normalize(glm::vec3{fwdAfterPitch.x, fwdAfterPitch.y, fwdAfterPitch.z});
     focusCamera->updateAndGetViewMatrix();
@@ -1317,13 +1315,39 @@ void check_drop_down_inputs(EditorState& editorState) {
                 << std::endl;
         if (mouse_x > (dropDownItem.renderBoundingBox.left) && mouse_x < (dropDownItem.renderBoundingBox.right)  &&
             mouse_y > (dropDownItem.renderBoundingBox.top) && mouse_y < (dropDownItem.renderBoundingBox.bottom) ) {
-            std::cout << "Hovered dropdown: " << std::to_string(dropDownItem.renderBoundingBox.left) << std::endl;
             editorState.dropDownsActiveHovered.push_back(dropDownItem);
         }
     }
 
+}
 
+/**
+ * Checks all menu-items of a specific dropdown-rectange for hovering/clicking.
+ * @param editorState   Overall editor state
+ * @param dropDown      The drop-down-item which menu items are checked for mouse overs
+ */
+void check_dropdown_menu_items(EditorState& editorState, DropDownItem* dropDown) {
+    int mouse_x = mouseX();
+    int mouse_y = mouseY();
+    int vOffset = dropDown->renderBoundingBox.top;
+    int hOffset = dropDown->renderBoundingBox.left;
 
+    for (auto menuItem : dropDown->menuItems) {
+        if (mouse_x > (hOffset + menuItem->renderBoundingBox.left) && mouse_x < (hOffset + menuItem->renderBoundingBox.right)  &&
+            mouse_y > (vOffset + menuItem->renderBoundingBox.top) && mouse_y < (vOffset + menuItem->renderBoundingBox.bottom) ) {
+                editorState.currentHoverDropDownMenuItem = menuItem;
+                if (mouseLeftClick()) {
+                    if (menuItem->action) {
+                        menuItem->action(editorState);
+                        editorState.dropDownsActive.push_back(menuItem->dropDownMenu);
+                    }
+                }
+        }
+    }
+
+    if (mouseLeftClick()) {
+        mouseLeftClickConsumed();
+    }
 }
 
 /**
@@ -1356,16 +1380,17 @@ void check_menu_inputs(EditorState & editorState) {
                 }
             }
         } else {
-            // Is the mouse over a connected dropdown menu?
+            // Is the mouse hovering a connected dropdown menu?
             if (menuItem->dropDownMenu) {
                 auto dropDownItem = menuItem->dropDownMenu;
                 if (mouse_x > (dropDownItem->renderBoundingBox.left) && mouse_x <
                         (dropDownItem->renderBoundingBox.right)  &&
                     mouse_y > (dropDownItem->renderBoundingBox.top) && mouse_y <
                         (dropDownItem->renderBoundingBox.bottom) ) {
-                    std::cout << "Hovered dropdown: " << std::to_string(dropDownItem->renderBoundingBox.left) << std::endl;
+                    // std::cout << "Hovered dropdown: " << std::to_string(dropDownItem->renderBoundingBox.left) << std::endl;
                     editorState.dropDownsActive.push_back(dropDownItem);
                     editorState.currentHoverMenuItem = menuItem;
+                    check_dropdown_menu_items(editorState, dropDownItem);
                 }
             }
 
@@ -1563,21 +1588,22 @@ void renderDropDownOverlays(EditorState & editorState) {
             bindVertexArray(editorState.graphics.quadVertexArray);
             bindShaderProgram(editorState.graphics.shaderProgram);
 
-            auto hoverWidth = textItemWidth + 16;
+            auto hoverWidth = dropDownWidth;
             auto halfHoverWidth = hoverWidth / 2;
             auto hoverBackgroundOverflow = 8.0f;
 
-            // // Render a blue background on hover.
-            // // Render a drop-down menu.
-            // if (editorState.currentHoverMenuItem == menuItem) {
-            //     // Hover background of the main menu item
-            //     bindTexture(editorState.texturePool["mid_blue_bg"], 0);
-            //     auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(hoverWidth, 32, 1));
-            //     auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(-hoverBackgroundOverflow + hOffset + halfHoverWidth , 16, 2)) * scaleMatrix;
-            //     uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
-            //     renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
-            //
-            // }
+            // Render a blue background on hover.
+            // Render a drop-down menu.
+            if (editorState.currentHoverDropDownMenuItem == menuItem) {
+                // Hover background of the main menu item
+                bindTexture(editorState.texturePool["gray_bg"], 0);
+                auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(hoverWidth, 24, 1));
+                auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(halfHoverWidth , vOffset-4, .47)) * scaleMatrix;
+
+                uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
+                renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
+
+            }
 
             enableBlending(true);
             bindShaderProgram(editorState.graphics.textShaderProgram);
@@ -1585,7 +1611,7 @@ void renderDropDownOverlays(EditorState & editorState) {
             bindTexture(getTextureFromFont(editorState.graphics.fontHandle), 0);
             auto scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
             auto worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(hOffset, vOffset, 0.45)) *  scaleMatrix;
-            menuItem->renderBoundingBox = {(float)hOffset-editorState.menuHoverMargin, 0, (float)hOffset-4 + textItemWidth + 16, 32};
+            menuItem->renderBoundingBox = {(float)hOffset-editorState.menuHoverMargin, vOffset - 20.0f, (float)hOffset-4 + textItemWidth + 16, vOffset + 4.0f};
             uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
             renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
         }
@@ -2119,7 +2145,10 @@ void initEditor(EditorState& editorState) {
 
     // Testwise adding some dropDown items into the active list:
     auto dd1 = new DropDownItem();
-    dd1->menuItems.push_back(new MenuItem{"Item1", createTextMesh(editorState.graphics.fontHandle, "Item1")});
+    dd1->menuItems.push_back(new MenuItem{"Item1", createTextMesh(editorState.graphics.fontHandle, "Item1"), {}, [] (EditorState& editorState) {
+        std::cout << "action of Item1" << std::endl;
+
+    }});
     dd1->menuItems.push_back(new MenuItem{"Item2", createTextMesh(editorState.graphics.fontHandle, "Item2")});
     gameobjectMenuItem->dropDownMenu = dd1;
 
