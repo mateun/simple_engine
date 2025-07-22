@@ -40,6 +40,8 @@ struct GameObject {
 
     bool expandedInTree = false;
 
+    DropDownItem* dropDownMenu = nullptr;
+
 };
 
 struct Level {
@@ -62,6 +64,7 @@ struct DropDownItem {
     BoundingBox renderBoundingBox;
     BoundingBox globalMouseBoundingBox;
     std::vector<MenuItem*> menuItems;
+    bool locked = false;
 };
 
 struct EditorState {

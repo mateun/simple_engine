@@ -9,6 +9,7 @@ extern WPARAM last_key_press();
 extern int winMouseX();
 extern int winMouseY();
 extern bool winLeftMouseUp();
+extern bool winRightMouseUp();
 
 // We support Windows VK_ macros here.
 bool keyPressed(int key) {
@@ -26,6 +27,10 @@ bool mouseLeftDoubleClick() {
 
 bool mouseLeftClick() {
     return winLeftMouseUp();
+}
+
+bool mouseRightClick() {
+    return winRightMouseUp();
 }
 
 void mouseLeftClickConsumed() {

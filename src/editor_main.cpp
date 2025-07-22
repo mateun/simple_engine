@@ -205,11 +205,15 @@ void renderTopMenu(int originX, int originY, int width, int height, EditorState&
             renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
 
         }
+
+        // TODO refactor this out of this "render" function into a separate "measure" function.
         if (menuItem->dropDownMenu) {
             menuItem->dropDownMenu->renderBoundingBox.left = menuItem->renderBoundingBox.left - editorState.menuHoverMargin;
-            menuItem->dropDownMenu->renderBoundingBox.right = menuItem->renderBoundingBox.right;
+            auto dropDownWidth = findWidestMenuItemSize(menuItem->dropDownMenu->menuItems, editorState.graphics.fontHandle) + 8;
+            menuItem->dropDownMenu->renderBoundingBox.right = menuItem->renderBoundingBox.left + dropDownWidth;
             menuItem->dropDownMenu->renderBoundingBox.top = menuItem->renderBoundingBox.top + 32;
-            menuItem->dropDownMenu->renderBoundingBox.bottom = menuItem->renderBoundingBox.bottom + 100;
+            auto dropDownHeight = menuItem->dropDownMenu->menuItems.size() * 24;
+            menuItem->dropDownMenu->renderBoundingBox.bottom = menuItem->renderBoundingBox.bottom + dropDownHeight;
         }
 
         enableBlending(true);
@@ -263,6 +267,17 @@ void renderGameObjectsRecursive(EditorState & editorState, GameObject* rootGameO
 
         }
 
+        if (go->dropDownMenu) {
+            go->dropDownMenu->renderBoundingBox.left = go->treeBoundingBox.left - editorState.menuHoverMargin;
+            auto dropDownWidth = findWidestMenuItemSize(go->dropDownMenu->menuItems, editorState.graphics.fontHandle) + 8;
+            dropDownWidth = std::max(100.0f, dropDownWidth);
+            go->dropDownMenu->renderBoundingBox.right = go->treeBoundingBox.left + dropDownWidth;
+            go->dropDownMenu->renderBoundingBox.top = go->treeBoundingBox.top + 32;
+            auto dropDownHeight = go->dropDownMenu->menuItems.size() * 24.0f;
+            dropDownHeight = std::max(100.0f, dropDownHeight);
+            go->dropDownMenu->renderBoundingBox.bottom = go->treeBoundingBox.bottom + dropDownHeight;
+        }
+
         // Render an expansion icon
         // for now just dummy rects.
         if (go->children.size() > 0) {
@@ -298,6 +313,8 @@ void renderGameObjectsRecursive(EditorState & editorState, GameObject* rootGameO
             renderGameObjectsRecursive(editorState, go, hOffsetVarying+1);
         }
     }
+
+    // TODO render dropdowns for game objects
 
 }
 
@@ -1200,6 +1217,13 @@ void check_game_object_tree_inputs(EditorState& editorState) {
                 if (mouseLeftClick()) {
                     editorState.currentSelectedGameObjectTreeItem = editorState.visibleGameObjectTreeItems[editorState.hoveredGameObjectTreeItemIndex];
                 }
+                if (mouseRightClick()) {
+                    auto go = editorState.visibleGameObjectTreeItems[editorState.hoveredGameObjectTreeItemIndex];
+                    if (go->dropDownMenu) {
+                        editorState.dropDownsActive.push_back(go->dropDownMenu);
+                        go->dropDownMenu->locked = false;
+                    }
+                }
             }
         }
 
@@ -1339,7 +1363,7 @@ void check_dropdown_menu_items(EditorState& editorState, DropDownItem* dropDown)
                 if (mouseLeftClick()) {
                     if (menuItem->action) {
                         menuItem->action(editorState);
-                        editorState.dropDownsActive.push_back(menuItem->dropDownMenu);
+                        dropDown->locked = true;
                     }
                 }
         }
@@ -1364,7 +1388,7 @@ void check_menu_inputs(EditorState & editorState) {
     editorState.currentHoverMenuItem = nullptr;
     int mouse_x = mouseX();
     int mouse_y = mouseY();
-    editorState.dropDownsActive.clear();
+    //editorState.dropDownsActive.clear();
     for (auto menuItem : editorState.topMenuItems) {
         if (mouse_x > (hOffset + menuItem->renderBoundingBox.left) && mouse_x < (hOffset + menuItem->renderBoundingBox.right)  &&
             mouse_y > (vOffset + menuItem->renderBoundingBox.top) && mouse_y < (vOffset + menuItem->renderBoundingBox.bottom) ) {
@@ -1372,6 +1396,7 @@ void check_menu_inputs(EditorState & editorState) {
 
             if (menuItem->dropDownMenu) {
                 editorState.dropDownsActive.push_back(menuItem->dropDownMenu);
+                menuItem->dropDownMenu->locked = false;
             }
 
             if (mouseLeftClick()) {
@@ -1381,7 +1406,7 @@ void check_menu_inputs(EditorState & editorState) {
             }
         } else {
             // Is the mouse hovering a connected dropdown menu?
-            if (menuItem->dropDownMenu) {
+            if (menuItem->dropDownMenu && !menuItem->dropDownMenu->locked) {
                 auto dropDownItem = menuItem->dropDownMenu;
                 if (mouse_x > (dropDownItem->renderBoundingBox.left) && mouse_x <
                         (dropDownItem->renderBoundingBox.right)  &&
@@ -1393,7 +1418,6 @@ void check_menu_inputs(EditorState & editorState) {
                     check_dropdown_menu_items(editorState, dropDownItem);
                 }
             }
-
         }
     }
 
@@ -2145,11 +2169,47 @@ void initEditor(EditorState& editorState) {
 
     // Testwise adding some dropDown items into the active list:
     auto dd1 = new DropDownItem();
-    dd1->menuItems.push_back(new MenuItem{"Item1", createTextMesh(editorState.graphics.fontHandle, "Item1"), {}, [] (EditorState& editorState) {
-        std::cout << "action of Item1" << std::endl;
+    dd1->menuItems.push_back(new MenuItem{"Add Cube", createTextMesh(editorState.graphics.fontHandle, "Add Cube"), {},
+        [] (EditorState& editorState) {
+            auto cube = new GameObject();
+            cube->name = "Cube";
+            editorState.gameObjects.push_back(cube);
+            editorState.rootGameObject->children.push_back(cube);
+            cube->dropDownMenu = new DropDownItem();
 
     }});
-    dd1->menuItems.push_back(new MenuItem{"Item2", createTextMesh(editorState.graphics.fontHandle, "Item2")});
+    dd1->menuItems.push_back(new MenuItem{"Add Sphere", createTextMesh(editorState.graphics.fontHandle, "Add Sphere"), {},
+        [] (EditorState& editorState) {
+            auto cube = new GameObject();
+            cube->name = "Sphere";
+            editorState.gameObjects.push_back(cube);
+            editorState.rootGameObject->children.push_back(cube);
+
+        }});
+
+    dd1->menuItems.push_back(new MenuItem{"Add Capsule", createTextMesh(editorState.graphics.fontHandle, "Add Capsule"), {},
+        [] (EditorState& editorState) {
+            auto cube = new GameObject();
+            cube->name = "Capsule";
+            editorState.gameObjects.push_back(cube);
+            editorState.rootGameObject->children.push_back(cube);
+        }});
+
+    dd1->menuItems.push_back(new MenuItem{"Add Camera", createTextMesh(editorState.graphics.fontHandle, "Add Camera"), {},
+        [] (EditorState& editorState) {
+            auto cube = new GameObject();
+            cube->name = "Camera";
+            editorState.gameObjects.push_back(cube);
+            editorState.rootGameObject->children.push_back(cube);
+        }});
+    dd1->menuItems.push_back(new MenuItem{"Add directional Light", createTextMesh(editorState.graphics.fontHandle, "Add directional light"), {},
+        [] (EditorState& editorState) {
+            auto cube = new GameObject();
+            cube->name = "Directional light";
+            editorState.gameObjects.push_back(cube);
+            editorState.rootGameObject->children.push_back(cube);
+        }});
+
     gameobjectMenuItem->dropDownMenu = dd1;
 
     // Prepare an offscreen framebuffer for the 3d scene:

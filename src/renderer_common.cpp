@@ -269,6 +269,16 @@ GraphicsHandle getTextureFromFont(GraphicsHandle fontHandle) {
     return font.atlasTexture;
 }
 
+float findWidestMenuItemSize(std::vector<MenuItem*>& menuItems, GraphicsHandle fontHandle) {
+    float widest = std::numeric_limits<float>::min();
+    for (auto menuItem : menuItems) {
+        auto bb = measureText(fontHandle, menuItem->name);
+        auto width = bb.right - bb.left;
+        widest = std::max<float>(widest, width);
+    }
+    return widest;
+}
+
 BoundingBox measureText(GraphicsHandle fontHandle, const std::string& text) {
     auto font = fontMap[fontHandle.id];
     float penX = 0, penY = 0;

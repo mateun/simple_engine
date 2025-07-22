@@ -333,6 +333,7 @@ std::wstring showFileDialog(const std::wstring& typeFilter);
 BoundingBox measureText(GraphicsHandle fontHandle, const std::string& text);
 GraphicsHandle beginRenderAnnotation(std::wstring name);
 std::string fileNameFromPath(const std::string& filePath);
+float findWidestMenuItemSize(std::vector<MenuItem*>& menuItems, GraphicsHandle fontHandle);
 
 void initGraphics(Win32Window& window, bool msaa, int msaa_samples);
 
@@ -380,6 +381,7 @@ int mouseX();
 int mouseY();
 bool mouseLeftDoubleClick();
 bool mouseLeftClick();
+bool mouseRightClick();
 void mouseLeftClickConsumed();
 bool isKeyDown(int key);
 bool keyPressed(int key);

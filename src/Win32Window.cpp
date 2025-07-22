@@ -7,6 +7,8 @@
 static bool in_size_move = false;
 static bool lbuttonDown = false;
 static bool lbuttonUp = false;
+static bool rbuttonDown = false;
+static bool rbuttonUp = false;
 static bool leftDoubleClick = false;
 static int mouse_x = 0;
 static int mouse_y = 0;
@@ -24,6 +26,10 @@ void winConsumeLeftClick() {
 
 bool winLeftDoubleClick() {
     return leftDoubleClick;
+}
+
+bool winRightMouseUp() {
+    return rbuttonUp;
 }
 
 bool winLeftMouseUp() {
@@ -120,6 +126,14 @@ LRESULT CALLBACK Win32Window::wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
         case WM_LBUTTONDBLCLK:
             leftDoubleClick = true;
+            break;
+
+        case WM_RBUTTONDOWN:
+            rbuttonDown = true;
+            break;
+
+        case WM_RBUTTONUP:
+            rbuttonUp = true;
             break;
 
         case WM_LBUTTONDOWN:
@@ -228,6 +242,8 @@ bool Win32Window::process_messages() {
     last_key_press_ = 0;
     lbuttonDown = false;
     lbuttonUp = false;
+    rbuttonDown = false;
+    rbuttonUp = false;
     leftDoubleClick = false;
 
     MSG msg;
@@ -265,8 +281,9 @@ std::wstring showFileDialog(const std::wstring& typeFilter) {
         std::wcout << "Selected file: " << ofn.lpstrFile << std::endl;
         return ofn.lpstrFile;
 
-    } else {
-        std::cout << "No file selected or operation canceled." << std::endl;
-        return L"";
     }
+
+    std::cout << "No file selected or operation canceled." << std::endl;
+    return L"";
+
 }
