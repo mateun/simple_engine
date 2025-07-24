@@ -168,7 +168,8 @@ struct EditorState {
     bool minimized = false;
     std::vector<DropDownItem> dropDownsActiveMenuItem;
     std::vector<DropDownItem> dropDownsActiveHovered;
-    std::vector<DropDownItem*> dropDownsActive;
+    std::vector<DropDownItem*> dropDownsTopMenuActive;
+    std::vector<DropDownItem*> dropDownsGameObjectsActive;
     float menuHoverMargin = 4.0f;
 
 };

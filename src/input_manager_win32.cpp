@@ -3,6 +3,7 @@
 //
 #include <Windows.h>
 
+extern void winConsumeRightClick();
 extern void winConsumeLeftClick();
 extern bool winLeftDoubleClick();
 extern WPARAM last_key_press();
@@ -35,6 +36,10 @@ bool mouseRightClick() {
 
 void mouseLeftClickConsumed() {
     winConsumeLeftClick();
+}
+
+void mouseRightClickConsumed() {
+    winConsumeRightClick();
 }
 
 int mouseX() {

@@ -253,6 +253,9 @@ void renderGameObjectsRecursive(EditorState & editorState, GameObject* rootGameO
         uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
         renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, editorState.textMesh->index_count, 0);
 
+        go->treeBoundingBox = {(float)hOffsetVarying * 16, -8 + (float)vOffset + invocationCounter * 24,
+               (float)hOffsetVarying * 16 + 24, (float) (vOffset + invocationCounter * 24) + 8};
+
         // Render a background rect for selected items
         if (editorState.currentSelectedGameObjectTreeItem == go) {
             enableBlending(true);
@@ -268,11 +271,11 @@ void renderGameObjectsRecursive(EditorState & editorState, GameObject* rootGameO
         }
 
         if (go->dropDownMenu) {
-            go->dropDownMenu->renderBoundingBox.left = go->treeBoundingBox.left - editorState.menuHoverMargin;
+            go->dropDownMenu->renderBoundingBox.left = go->treeBoundingBox.left + 32;
             auto dropDownWidth = findWidestMenuItemSize(go->dropDownMenu->menuItems, editorState.graphics.fontHandle) + 8;
             dropDownWidth = std::max(100.0f, dropDownWidth);
             go->dropDownMenu->renderBoundingBox.right = go->treeBoundingBox.left + dropDownWidth;
-            go->dropDownMenu->renderBoundingBox.top = go->treeBoundingBox.top + 32;
+            go->dropDownMenu->renderBoundingBox.top = go->treeBoundingBox.top + 48;
             auto dropDownHeight = go->dropDownMenu->menuItems.size() * 24.0f;
             dropDownHeight = std::max(100.0f, dropDownHeight);
             go->dropDownMenu->renderBoundingBox.bottom = go->treeBoundingBox.bottom + dropDownHeight;
@@ -294,10 +297,6 @@ void renderGameObjectsRecursive(EditorState & editorState, GameObject* rootGameO
             worldMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(12 + hOffsetVarying * 16, (vOffset+ invocationCounter * 24) -4 , 1)) * rotationMatrix * scaleMatrix;
             uploadConstantBufferData( editorState.graphics.objectTransformBuffer, glm::value_ptr(worldMatrix), sizeof(glm::mat4), 0);
             renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, 6, 0);
-
-            go->treeBoundingBox = {(float)hOffsetVarying * 16, -8 + (float)vOffset + invocationCounter * 24,
-                (float)hOffsetVarying * 16 + 24, (float) (vOffset + invocationCounter * 24) + 8};
-
             editorState.visibleGameObjectsWithChildrenTreeItems.push_back(go);
         }
 
@@ -1173,6 +1172,8 @@ bool assetIsAlreadyOpenInTab(const std::string& tabTitle, EditorState& editorSta
 
 void check_game_object_tree_inputs(EditorState& editorState) {
 
+
+
     bool expandedAnItem = false;
     // First, check for clicking on the expanse icons:
     {
@@ -1220,15 +1221,15 @@ void check_game_object_tree_inputs(EditorState& editorState) {
                 if (mouseRightClick()) {
                     auto go = editorState.visibleGameObjectTreeItems[editorState.hoveredGameObjectTreeItemIndex];
                     if (go->dropDownMenu) {
-                        editorState.dropDownsActive.push_back(go->dropDownMenu);
+                        editorState.dropDownsGameObjectsActive.clear();
+                        editorState.dropDownsGameObjectsActive.push_back(go->dropDownMenu);
                         go->dropDownMenu->locked = false;
                     }
+                    mouseRightClickConsumed();
                 }
             }
         }
-
     }
-
 
 }
 
@@ -1388,14 +1389,14 @@ void check_menu_inputs(EditorState & editorState) {
     editorState.currentHoverMenuItem = nullptr;
     int mouse_x = mouseX();
     int mouse_y = mouseY();
-    //editorState.dropDownsActive.clear();
+    editorState.dropDownsTopMenuActive.clear();
     for (auto menuItem : editorState.topMenuItems) {
         if (mouse_x > (hOffset + menuItem->renderBoundingBox.left) && mouse_x < (hOffset + menuItem->renderBoundingBox.right)  &&
             mouse_y > (vOffset + menuItem->renderBoundingBox.top) && mouse_y < (vOffset + menuItem->renderBoundingBox.bottom) ) {
             editorState.currentHoverMenuItem = menuItem;
 
             if (menuItem->dropDownMenu) {
-                editorState.dropDownsActive.push_back(menuItem->dropDownMenu);
+                editorState.dropDownsTopMenuActive.push_back(menuItem->dropDownMenu);
                 menuItem->dropDownMenu->locked = false;
             }
 
@@ -1413,7 +1414,7 @@ void check_menu_inputs(EditorState & editorState) {
                     mouse_y > (dropDownItem->renderBoundingBox.top) && mouse_y <
                         (dropDownItem->renderBoundingBox.bottom) ) {
                     // std::cout << "Hovered dropdown: " << std::to_string(dropDownItem->renderBoundingBox.left) << std::endl;
-                    editorState.dropDownsActive.push_back(dropDownItem);
+                    editorState.dropDownsTopMenuActive.push_back(dropDownItem);
                     editorState.currentHoverMenuItem = menuItem;
                     check_dropdown_menu_items(editorState, dropDownItem);
                 }
@@ -1568,7 +1569,11 @@ void renderDropDownOverlays(EditorState & editorState) {
     setFrontCulling(true);
     bindVertexArray(editorState.graphics.quadVertexArray);
 
-    for (auto dropDownItem : editorState.dropDownsActive) {
+    std::vector<DropDownItem*> frameDropDownItems;
+    frameDropDownItems.insert(frameDropDownItems.end(), editorState.dropDownsTopMenuActive.begin(), editorState.dropDownsTopMenuActive.end());
+    frameDropDownItems.insert(frameDropDownItems.end(), editorState.dropDownsGameObjectsActive.begin(), editorState.dropDownsGameObjectsActive.end());
+
+    for (auto dropDownItem : frameDropDownItems) {
         auto boundingBox = dropDownItem->renderBoundingBox;
         auto dropDownWidth = boundingBox.right - boundingBox.left;
         auto halfDropDownWidth = dropDownWidth / 2;
@@ -1640,13 +1645,9 @@ void renderDropDownOverlays(EditorState & editorState) {
             renderGeometryIndexed(PrimitiveType::TRIANGLE_LIST, textMesh->index_count, 0);
         }
 
-        blitFramebufferToScreen(editorState.graphics.frameBufferDropDownOverlayPanel, editorState, width, height, boundingBox.left + halfDropDownWidth, 32+ dropDownHeight/2, 0.1, false);
+        blitFramebufferToScreen(editorState.graphics.frameBufferDropDownOverlayPanel, editorState, width, height, boundingBox.left + halfDropDownWidth, boundingBox.top + dropDownHeight/2, 0.1, false);
 
     }
-
-
-
-
 
 }
 

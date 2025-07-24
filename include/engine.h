@@ -383,6 +383,7 @@ bool mouseLeftDoubleClick();
 bool mouseLeftClick();
 bool mouseRightClick();
 void mouseLeftClickConsumed();
+void mouseRightClickConsumed();
 bool isKeyDown(int key);
 bool keyPressed(int key);
 int resizedWidth();
